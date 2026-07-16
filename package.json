@@ -1,0 +1,30 @@
+{
+  "name": "clinical-crm",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "verify": "node scripts/verify-connections.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/latechssolution-cmyk/Clinical_Crm.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/latechssolution-cmyk/Clinical_Crm/issues"
+  },
+  "homepage": "https://github.com/latechssolution-cmyk/Clinical_Crm#readme",
+  "description": "",
+  "devDependencies": {
+    "supabase": "^2.109.1"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.110.7",
+    "dotenv": "^17.4.2",
+    "pg": "^8.22.0",
+    "twilio": "^6.0.2"
+  }
+}
