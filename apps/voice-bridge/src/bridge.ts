@@ -31,7 +31,14 @@ interface LiveCall {
   openaiWs: WebSocket | null;
   streamSid: string;
   finalized: boolean;
+  /** a model response is currently being generated/spoken */
+  responseActive: boolean;
+  /** pending debounced barge-in timer */
+  bargeInTimer: NodeJS.Timeout | null;
 }
+
+/** Sustained speech required before we interrupt the assistant (noise guard). */
+const BARGE_IN_DEBOUNCE_MS = 300;
 
 const liveCalls = new Set<LiveCall>();
 
@@ -59,6 +66,7 @@ function safeSend(ws: WebSocket | null, data: unknown): void {
 async function teardown(call: LiveCall, reason: string): Promise<void> {
   if (call.finalized) return;
   call.finalized = true;
+  if (call.bargeInTimer) clearTimeout(call.bargeInTimer);
   liveCalls.delete(call);
   console.log(`[call ${call.session.callId}] teardown (${reason})`);
 
@@ -101,7 +109,6 @@ function connectOpenAI(call: LiveCall, mode: ServiceMode): void {
   const openaiWs = new WebSocket(url, {
     headers: {
       Authorization: `Bearer ${config.openaiApiKey}`,
-      'OpenAI-Beta': 'realtime=v1',
     },
   });
   call.openaiWs = openaiWs;
@@ -110,15 +117,27 @@ function connectOpenAI(call: LiveCall, mode: ServiceMode): void {
 
   openaiWs.on('open', () => {
     console.log(`[call ${call.session.callId}] openai connected`);
+    // GA Realtime API session shape (the beta shape was retired by OpenAI).
     safeSend(openaiWs, {
       type: 'session.update',
       session: {
-        modalities: ['audio', 'text'],
-        input_audio_format: 'g711_ulaw',
-        output_audio_format: 'g711_ulaw',
-        turn_detection: { type: 'server_vad' },
-        input_audio_transcription: { model: 'whisper-1' },
-        voice: call.session.tenant.agentConfig.voice || 'alloy',
+        type: 'realtime',
+        output_modalities: ['audio'],
+        audio: {
+          input: {
+            format: { type: 'audio/pcmu' },
+            // semantic_vad: the model judges real speech/interruptions instead
+            // of a raw volume threshold — far more robust in noisy settings.
+            turn_detection: { type: 'semantic_vad' },
+            // far_field: tuned for speakerphones / background noise (traffic).
+            noise_reduction: { type: 'far_field' },
+            transcription: { model: 'whisper-1' },
+          },
+          output: {
+            format: { type: 'audio/pcmu' },
+            voice: call.session.tenant.agentConfig.voice || 'alloy',
+          },
+        },
         instructions: buildInstructions(call.session.tenant, {
           mode,
           callerNumber: call.session.fromNumber,
@@ -162,6 +181,7 @@ function connectOpenAI(call: LiveCall, mode: ServiceMode): void {
         break;
       }
 
+      case 'response.output_audio.delta':
       case 'response.audio.delta': {
         // Base64 G.711 μ-law from OpenAI → Twilio media frame.
         if (typeof ev.delta === 'string' && c.streamSid) {
@@ -174,10 +194,33 @@ function connectOpenAI(call: LiveCall, mode: ServiceMode): void {
         break;
       }
 
+      case 'response.created': {
+        c.responseActive = true;
+        break;
+      }
+
       case 'input_audio_buffer.speech_started': {
-        // Barge-in: stop playback on the phone and cancel the in-flight response.
-        if (c.streamSid) safeSend(c.twilioWs, { event: 'clear', streamSid: c.streamSid });
-        safeSend(ws, { type: 'response.cancel' });
+        // Debounced barge-in: only interrupt the assistant if the caller keeps
+        // speaking for a sustained window — a horn blip or door slam won't cut
+        // it off, a real "wait, actually—" still will. Only relevant while a
+        // response is actively playing.
+        if (!c.responseActive) break;
+        if (c.bargeInTimer) clearTimeout(c.bargeInTimer);
+        c.bargeInTimer = setTimeout(() => {
+          c.bargeInTimer = null;
+          if (!c.responseActive) return;
+          if (c.streamSid) safeSend(c.twilioWs, { event: 'clear', streamSid: c.streamSid });
+          safeSend(ws, { type: 'response.cancel' });
+        }, BARGE_IN_DEBOUNCE_MS);
+        break;
+      }
+
+      case 'input_audio_buffer.speech_stopped': {
+        // Speech ended before the debounce window elapsed → treat as noise blip.
+        if (c.bargeInTimer) {
+          clearTimeout(c.bargeInTimer);
+          c.bargeInTimer = null;
+        }
         break;
       }
 
@@ -187,6 +230,7 @@ function connectOpenAI(call: LiveCall, mode: ServiceMode): void {
         break;
       }
 
+      case 'response.output_audio_transcript.done':
       case 'response.audio_transcript.done': {
         const text = typeof ev.transcript === 'string' ? ev.transcript.trim() : '';
         if (text) c.session.transcript.push({ role: 'assistant', text, at: new Date().toISOString() });
@@ -210,6 +254,7 @@ function connectOpenAI(call: LiveCall, mode: ServiceMode): void {
       }
 
       case 'response.done': {
+        c.responseActive = false;
         if (c.session.endRequested && c.streamSid) {
           // All audio deltas for the goodbye have been forwarded; ask Twilio to
           // echo a mark back once playback reaches this point, then hang up.
@@ -219,6 +264,8 @@ function connectOpenAI(call: LiveCall, mode: ServiceMode): void {
       }
 
       case 'error': {
+        // Benign race: our cancel landed after the response already finished.
+        if (ev.error?.code === 'response_cancel_not_active') break;
         console.error(`[call ${c.session.callId}] openai error event:`, JSON.stringify(ev.error ?? ev));
         break;
       }
@@ -281,6 +328,8 @@ export function createMediaWss(): WebSocketServer {
               openaiWs: null,
               streamSid: msg.start?.streamSid ?? msg.streamSid ?? '',
               finalized: false,
+              responseActive: false,
+              bargeInTimer: null,
             };
             liveCalls.add(call);
             console.log(

@@ -14,7 +14,19 @@ dotenv.config({ path: path.join(root, '.env') });
 const PORT = process.env.PORT || '8080';
 const CLOUDFLARED = path.join(root, 'tools', 'cloudflared.exe');
 
-const { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER_SID } = process.env;
+const { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER_SID, TWIML_APP_SID } = process.env;
+
+async function twilioPost(pathname, body) {
+  const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}${pathname}`, {
+    method: 'POST',
+    headers: {
+      Authorization: 'Basic ' + Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString('base64'),
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: new URLSearchParams(body),
+  });
+  return res.json();
+}
 
 function log(tag, msg) {
   console.log(`[${tag}] ${msg}`);
@@ -52,25 +64,24 @@ const bridge = spawn('npx', ['tsx', 'src/index.ts'], {
 
 // --- 3. twilio webhook ---
 if (TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && TWILIO_PHONE_NUMBER_SID) {
-  const res = await fetch(
-    `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/IncomingPhoneNumbers/${TWILIO_PHONE_NUMBER_SID}.json`,
-    {
-      method: 'POST',
-      headers: {
-        Authorization: 'Basic ' + Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString('base64'),
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({
-        VoiceUrl: `${tunnelUrl}/voice/incoming`,
-        VoiceMethod: 'POST',
-      }),
-    },
-  );
-  const data = await res.json();
+  const data = await twilioPost(`/IncomingPhoneNumbers/${TWILIO_PHONE_NUMBER_SID}.json`, {
+    VoiceUrl: `${tunnelUrl}/voice/incoming`,
+    VoiceMethod: 'POST',
+  });
   if (data.sid) log('twilio', `webhook set: ${data.phone_number} -> ${data.voice_url}`);
-  else log('twilio', `FAILED to set webhook: ${data.message || res.status}`);
+  else log('twilio', `FAILED to set webhook: ${data.message}`);
 } else {
   log('twilio', 'TWILIO_* env vars missing — webhook not updated');
+}
+
+// Keep the browser test-softphone's TwiML app pointed at the current tunnel too.
+if (TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && TWIML_APP_SID) {
+  const data = await twilioPost(`/Applications/${TWIML_APP_SID}.json`, {
+    VoiceUrl: `${tunnelUrl}/voice/incoming`,
+    VoiceMethod: 'POST',
+  });
+  if (data.sid) log('twilio', `twiml app (softphone) -> ${data.voice_url}`);
+  else log('twilio', `FAILED to update twiml app: ${data.message}`);
 }
 
 log('ready', `Call your Twilio number. Health check: ${tunnelUrl}/health`);
