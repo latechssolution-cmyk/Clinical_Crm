@@ -12,7 +12,8 @@
     "test:isolation": "node scripts/test-isolation.js",
     "test:core": "npm test --workspace packages/core",
     "dev:web": "npm run dev --workspace apps/web",
-    "dev:bridge": "npm run dev --workspace apps/voice-bridge"
+    "dev:bridge": "npm run dev --workspace apps/voice-bridge",
+    "dev:voice": "node scripts/dev-voice.mjs"
   },
   "repository": {
     "type": "git",
