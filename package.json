@@ -1,23 +1,24 @@
 {
   "name": "clinical-crm",
   "version": "1.0.0",
-  "main": "index.js",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "verify": "node scripts/verify-connections.js"
+    "verify": "node scripts/verify-connections.js",
+    "migrate": "node scripts/migrate.js",
+    "test:isolation": "node scripts/test-isolation.js",
+    "test:core": "npm test --workspace packages/core",
+    "dev:web": "npm run dev --workspace apps/web",
+    "dev:bridge": "npm run dev --workspace apps/voice-bridge"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/latechssolution-cmyk/Clinical_Crm.git"
   },
-  "keywords": [],
-  "author": "",
   "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/latechssolution-cmyk/Clinical_Crm/issues"
-  },
-  "homepage": "https://github.com/latechssolution-cmyk/Clinical_Crm#readme",
-  "description": "",
   "devDependencies": {
     "supabase": "^2.109.1"
   },
