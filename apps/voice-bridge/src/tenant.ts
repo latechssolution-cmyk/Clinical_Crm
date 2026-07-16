@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { getVertical } from '@clinical-crm/core';
+import type { VerticalPack } from '@clinical-crm/core';
 import { getSupabase } from './db.js';
 
 // ---------------------------------------------------------------------------
@@ -16,6 +18,10 @@ export interface ClinicRow {
   business_hours: Record<string, unknown>;
   settings: Record<string, unknown>;
   status: 'onboarding' | 'active' | 'suspended';
+  /** business template driving agent behavior + terminology ('clinic', 'roofing', ...) */
+  vertical: string;
+  /** ISO 3166-1 alpha-2 country for phone normalization */
+  default_country: string;
 }
 
 export interface AgentConfigRow {
@@ -56,9 +62,9 @@ const bookingPolicySchema = z
     min_notice_minutes: z.number().int().min(0).default(120),
     max_advance_days: z.number().int().min(1).default(60),
     max_active_appointments_per_patient: z.number().int().min(1).default(2),
-    required_patient_fields: z
-      .array(z.string())
-      .default(['first_name', 'last_name', 'phone', 'date_of_birth']),
+    // No default: when unset, the vertical pack's requiredContactFields apply
+    // (clinic pack = the historical [first_name, last_name, phone, date_of_birth]).
+    required_patient_fields: z.array(z.string()).optional(),
   })
   .passthrough();
 
@@ -72,10 +78,14 @@ export type BookingPolicy = z.infer<typeof bookingPolicySchema>;
 export interface TenantContext {
   clinicId: string;
   clinic: ClinicRow;
+  /** vertical pack: terminology, agent brief, qualification fields, spam posture */
+  vertical: VerticalPack;
   agentConfig: AgentConfigRow;
   doctors: DoctorRow[];
   appointmentTypes: AppointmentTypeRow[];
   bookingPolicy: BookingPolicy;
+  /** identity fields the agent must collect before booking (policy override or pack default) */
+  requiredContactFields: string[];
 }
 
 function parseBookingPolicy(raw: unknown): BookingPolicy {
@@ -122,13 +132,18 @@ async function loadContext(clinicId: string): Promise<TenantContext | null> {
       enabled: true,
     };
 
+  const vertical = getVertical(clinic.vertical);
+  const bookingPolicy = parseBookingPolicy(agentConfig.booking_policy);
+
   return {
     clinicId,
     clinic,
+    vertical,
     agentConfig,
     doctors: (doctorsRes.data as DoctorRow[] | null) ?? [],
     appointmentTypes: (typesRes.data as AppointmentTypeRow[] | null) ?? [],
-    bookingPolicy: parseBookingPolicy(agentConfig.booking_policy),
+    bookingPolicy,
+    requiredContactFields: bookingPolicy.required_patient_fields ?? vertical.requiredContactFields,
   };
 }
 

@@ -26,6 +26,7 @@ const createSchema = z.object({
   phone: z.string().trim().regex(phoneRegex, 'Phone must be E.164, e.g. +15551234567'),
   email: z.string().trim().email().max(200).optional().or(z.literal('')),
   date_of_birth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().or(z.literal('')),
+  address: z.string().trim().max(400).optional().or(z.literal('')),
   notes: z.string().trim().max(4000).optional().or(z.literal('')),
 });
 
@@ -40,6 +41,7 @@ export async function createPatient(
     phone: formData.get('phone'),
     email: formData.get('email') ?? '',
     date_of_birth: formData.get('date_of_birth') ?? '',
+    address: formData.get('address') ?? '',
     notes: formData.get('notes') ?? '',
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Invalid input' };
@@ -61,6 +63,7 @@ export async function createPatient(
       phone: parsed.data.phone,
       email: parsed.data.email || null,
       date_of_birth: parsed.data.date_of_birth || null,
+      address: parsed.data.address || null,
       notes: parsed.data.notes || null,
     })
     .select('id')
@@ -83,6 +86,7 @@ const updateSchema = z.object({
   phone: z.string().trim().regex(phoneRegex).optional(),
   email: z.string().trim().email().max(200).nullable().optional(),
   date_of_birth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  address: z.string().trim().max(400).nullable().optional(),
   notes: z.string().trim().max(4000).nullable().optional(),
 });
 

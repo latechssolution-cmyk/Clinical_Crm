@@ -1,5 +1,6 @@
 import { cache } from 'react';
 import { redirect } from 'next/navigation';
+import { getVertical } from '@clinical-crm/core';
 import { createClient } from '@/lib/supabase/server';
 import type { Clinic, MemberRole } from '@/lib/types';
 
@@ -37,5 +38,7 @@ export const getClinic = cache(async (slug: string) => {
     clinic: clinic as Clinic,
     role: membership.role as MemberRole,
     user,
+    /** the tenant's vertical pack (terminology, qualification fields, ...) */
+    vertical: getVertical((clinic as Clinic).vertical),
   };
 });

@@ -33,6 +33,9 @@ export interface Clinic {
   business_hours: BusinessHours;
   settings: Record<string, unknown>;
   status: 'onboarding' | 'active' | 'suspended';
+  vertical: string;
+  default_country: string;
+  created_at?: string;
 }
 
 export interface ClinicMember {
@@ -102,6 +105,8 @@ export interface Patient {
   phone: string;
   email: string | null;
   date_of_birth: string | null;
+  address: string | null;
+  qualification: Record<string, unknown>;
   notes: string | null;
   flags: { verified?: boolean; blocked?: boolean };
   created_at: string;
@@ -161,6 +166,7 @@ export interface CallTranscript {
   summary: string | null;
   outcome: CallOutcome | null;
   extracted_data: Record<string, unknown>;
+  qualification: Record<string, unknown>;
 }
 
 export interface AgentConfig {

@@ -3,7 +3,7 @@ import twilio from 'twilio';
 import { config } from './config.js';
 import { loadTenantByClinicId } from './tenant.js';
 import { buildInstructions, type ServiceMode } from './instructions.js';
-import { toolDefinitions } from './tools/definitions.js';
+import { getToolDefinitions } from './tools/definitions.js';
 import { executeTool } from './tools/executor.js';
 import { finalizeCall } from './finalize.js';
 import type { CallSession } from './session.js';
@@ -142,7 +142,7 @@ function connectOpenAI(call: LiveCall, mode: ServiceMode): void {
           mode,
           callerNumber: call.session.fromNumber,
         }),
-        tools: toolDefinitions,
+        tools: getToolDefinitions(call.session.tenant.vertical),
         tool_choice: 'auto',
       },
     });
@@ -318,6 +318,7 @@ export function createMediaWss(): WebSocketServer {
               startedAt: Date.now(),
               transcript: [],
               patientId: null,
+              qualification: {},
               endRequested: false,
               flaggedSpam: false,
               toolCallCount: 0,

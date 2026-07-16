@@ -4,6 +4,7 @@ import { getClinic } from '@/lib/get-clinic';
 import { createClient } from '@/lib/supabase/server';
 import { fmtDateTime, fmtDuration } from '@/lib/datetime';
 import { Card, EmptyState, OutcomeBadge, StatusBadge } from '@/components/ui';
+import { QualificationList, hasQualification } from '@/components/qualification';
 import type { Appointment, Call, CallTranscript, Patient } from '@/lib/types';
 import { BlockedToggle, NotesEditor } from './patient-controls';
 
@@ -14,7 +15,10 @@ export default async function PatientDetailPage({
 }: {
   params: { slug: string; id: string };
 }) {
-  const { clinic } = await getClinic(params.slug);
+  const { clinic, vertical } = await getClinic(params.slug);
+  const t = vertical.terminology;
+  const showAddress = vertical.requiredContactFields.includes('address');
+  const showDob = vertical.requiredContactFields.includes('date_of_birth');
   const supabase = createClient();
   const tz = clinic.timezone;
 
@@ -52,7 +56,7 @@ export default async function PatientDetailPage({
     <div className="space-y-6">
       <div>
         <Link href={`/${clinic.slug}/patients`} className="text-xs font-medium text-teal-600 hover:underline">
-          ← Patients
+          ← {t.contacts}
         </Link>
         <div className="mt-1 flex flex-wrap items-center gap-3">
           <h1 className="text-lg font-semibold text-slate-900">
@@ -66,24 +70,34 @@ export default async function PatientDetailPage({
 
       <div className="grid gap-6 xl:grid-cols-3">
         <div className="space-y-6">
-          <Card title="Patient info">
+          <Card title={`${t.contact} info`}>
             <dl className="space-y-2 text-sm">
               <div className="flex justify-between"><dt className="text-slate-500">Phone</dt><dd className="tabular-nums text-slate-800">{patient.phone}</dd></div>
               <div className="flex justify-between"><dt className="text-slate-500">Email</dt><dd className="text-slate-800">{patient.email ?? '—'}</dd></div>
-              <div className="flex justify-between"><dt className="text-slate-500">Date of birth</dt><dd className="text-slate-800">{patient.date_of_birth ?? '—'}</dd></div>
+              {(showDob || patient.date_of_birth) && (
+                <div className="flex justify-between"><dt className="text-slate-500">Date of birth</dt><dd className="text-slate-800">{patient.date_of_birth ?? '—'}</dd></div>
+              )}
+              {(showAddress || patient.address) && (
+                <div className="flex justify-between gap-4"><dt className="text-slate-500">Address</dt><dd className="text-right text-slate-800">{patient.address ?? '—'}</dd></div>
+              )}
             </dl>
             <div className="mt-4 border-t border-slate-100 pt-4">
               <BlockedToggle slug={clinic.slug} patientId={patient.id} blocked={!!patient.flags?.blocked} />
             </div>
           </Card>
+          {hasQualification(patient.qualification) && (
+            <Card title="Qualification">
+              <QualificationList qualification={patient.qualification} fields={vertical.qualificationFields} />
+            </Card>
+          )}
           <Card title="Notes">
             <NotesEditor slug={clinic.slug} patientId={patient.id} initialNotes={patient.notes ?? ''} />
           </Card>
         </div>
 
-        <Card title="Appointment history">
+        <Card title={`${t.booking} history`}>
           {appointments.length === 0 ? (
-            <EmptyState>No appointments yet.</EmptyState>
+            <EmptyState>No {t.bookings.toLowerCase()} yet.</EmptyState>
           ) : (
             <ul className="divide-y divide-slate-100">
               {appointments.map((a) => (
@@ -91,7 +105,7 @@ export default async function PatientDetailPage({
                   <div>
                     <p className="text-sm font-medium text-slate-800">{fmtDateTime(a.starts_at, tz)}</p>
                     <p className="text-xs text-slate-400">
-                      {a.doctors?.name} · {a.appointment_types?.name ?? 'Appointment'}
+                      {a.doctors?.name} · {a.appointment_types?.name ?? t.booking}
                     </p>
                   </div>
                   <StatusBadge status={a.status} />
@@ -103,7 +117,7 @@ export default async function PatientDetailPage({
 
         <Card title="Call history">
           {calls.length === 0 ? (
-            <EmptyState>No calls linked to this patient.</EmptyState>
+            <EmptyState>No calls linked to this {t.contact.toLowerCase()}.</EmptyState>
           ) : (
             <ul className="divide-y divide-slate-100">
               {calls.map((c) => {

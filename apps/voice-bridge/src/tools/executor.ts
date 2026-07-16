@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { computeOpenSlots } from '@clinical-crm/core';
+import { computeOpenSlots, normalizePhone, phoneTail } from '@clinical-crm/core';
 import type {
   AvailabilityException,
   AvailabilityRule,
@@ -7,6 +7,7 @@ import type {
 } from '@clinical-crm/core';
 import { getSupabase } from '../db.js';
 import { describeBusinessHours } from '../hours.js';
+import { sendBookingConfirmationSms } from '../sms.js';
 import type { CallSession } from '../session.js';
 
 type ToolResult = Record<string, unknown>;
@@ -18,19 +19,16 @@ type ToolResult = Record<string, unknown>;
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'expected YYYY-MM-DD');
 const uuid = z.string().uuid();
 
-function normalizePhone(raw: string, fallbackRegionDigits?: string): string | null {
-  const cleaned = raw.replace(/[\s().-]/g, '');
-  if (/^\+\d{7,15}$/.test(cleaned)) return cleaned;
-  if (/^00\d{7,15}$/.test(cleaned)) return `+${cleaned.slice(2)}`;
-  if (/^\d{7,15}$/.test(cleaned)) {
-    // Bare national number: borrow the country code from the caller ID if we
-    // have one, else assume it is already a full number missing "+".
-    if (fallbackRegionDigits && /^\+1\d{10}$/.test(fallbackRegionDigits) && cleaned.length === 10) {
-      return `+1${cleaned}`;
-    }
-    return `+${cleaned}`;
-  }
-  return null;
+const INVALID_PHONE: ToolResult = {
+  success: false,
+  reason: 'invalid_phone',
+  message: 'ask the caller to repeat the number digit by digit',
+};
+
+/** Normalize a raw phone to E.164 using the tenant's default country. Null on failure. */
+function tenantPhone(session: CallSession, raw: string): string | null {
+  const result = normalizePhone(raw, session.tenant.clinic.default_country || 'US');
+  return result.ok && result.e164 ? result.e164 : null;
 }
 
 function maskPhone(phone: string | null): string {
@@ -89,7 +87,11 @@ async function findPatient(session: CallSession, raw: unknown): Promise<ToolResu
     .eq('clinic_id', clinicId)
     .limit(5);
 
-  const phone = args.phone ? normalizePhone(args.phone, session.fromNumber) : null;
+  let phone: string | null = null;
+  if (args.phone) {
+    phone = tenantPhone(session, args.phone);
+    if (!phone) return { ...INVALID_PHONE };
+  }
   if (phone) {
     query = query.eq('phone', phone);
   } else if (args.name) {
@@ -120,31 +122,67 @@ const createPatientArgs = z.object({
   last_name: z.string().min(1),
   phone: z.string().optional(),
   date_of_birth: isoDate.optional(),
+  address: z.string().optional(),
   email: z.string().email().optional(),
+  /** true only after the caller confirmed a similar existing record is not them */
+  confirmed_not_duplicate: z.boolean().optional(),
 });
 
 async function createPatient(session: CallSession, raw: unknown): Promise<ToolResult> {
   const args = createPatientArgs.parse(raw);
   const clinicId = session.tenant.clinicId;
-  const policy = session.tenant.bookingPolicy;
 
-  const phone = normalizePhone(args.phone ?? session.fromNumber, session.fromNumber);
+  const rawPhone = args.phone ?? session.fromNumber;
+  const phone = rawPhone ? tenantPhone(session, rawPhone) : null;
+  if (rawPhone && !phone) return { ...INVALID_PHONE };
+
   const record: Record<string, unknown> = {
     clinic_id: clinicId,
     first_name: args.first_name.trim(),
     last_name: args.last_name.trim(),
     phone,
     date_of_birth: args.date_of_birth ?? null,
+    address: args.address?.trim() || null,
     email: args.email ?? null,
   };
+  // Qualification collected earlier in the call lands on the new record too.
+  if (Object.keys(session.qualification).length > 0) {
+    record.qualification = session.qualification;
+  }
 
-  const missing = policy.required_patient_fields.filter((f) => !record[f]);
+  const missing = session.tenant.requiredContactFields.filter((f) => !record[f]);
   if (missing.length > 0) {
     return { success: false, reason: `missing required fields: ${missing.join(', ')} — collect them from the caller` };
   }
   if (!phone) return { success: false, reason: 'a valid phone number is required' };
 
   const db = getSupabase();
+
+  // Fuzzy dedup: an existing record whose phone shares the same last-7 digits
+  // is very likely the same person reached at a slightly different format.
+  if (!args.confirmed_not_duplicate) {
+    const tail = phoneTail(phone, 7);
+    const dup = await db
+      .from('patients')
+      .select('id, first_name, last_name, phone')
+      .eq('clinic_id', clinicId)
+      .like('phone', `%${tail}`)
+      .limit(1);
+    const match = dup.data?.[0];
+    if (!dup.error && match) {
+      return {
+        success: false,
+        reason: 'possible_duplicate',
+        existing: {
+          id: match.id,
+          name: `${match.first_name} ${match.last_name}`,
+          phone_last4: String(match.phone ?? '').slice(-4),
+        },
+        message:
+          'ask the caller: "I found an existing record for NAME with a number ending in XXXX — is that you?" If yes, call confirm_existing_patient; if no, call create_patient again with confirmed_not_duplicate: true',
+      };
+    }
+  }
   const { data, error } = await db.from('patients').insert(record).select('id, first_name, last_name').single();
   if (error) {
     if (error.code === '23505') {
@@ -171,6 +209,89 @@ async function createPatient(session: CallSession, raw: unknown): Promise<ToolRe
   }
   session.patientId = data.id as string;
   return { success: true, patient_id: data.id, name: `${data.first_name} ${data.last_name}` };
+}
+
+const confirmExistingArgs = z.object({ patient_id: uuid });
+
+/** The caller verbally confirmed an existing record is them — pin it to the session. */
+async function confirmExistingPatient(session: CallSession, raw: unknown): Promise<ToolResult> {
+  const args = confirmExistingArgs.parse(raw);
+  const db = getSupabase();
+  const { data, error } = await db
+    .from('patients')
+    .select('id, first_name, last_name')
+    .eq('clinic_id', session.tenant.clinicId)
+    .eq('id', args.patient_id)
+    .maybeSingle();
+  if (error || !data) return { success: false, reason: 'unknown patient' };
+
+  session.patientId = data.id as string;
+
+  // Flush any qualification collected before the caller was identified.
+  if (Object.keys(session.qualification).length > 0) {
+    await mergePatientQualification(session, data.id as string);
+  }
+  return { success: true, patient_id: data.id, name: `${data.first_name} ${data.last_name}` };
+}
+
+/** Merge session qualification into the patient row's jsonb (best-effort). */
+async function mergePatientQualification(session: CallSession, patientId: string): Promise<void> {
+  const db = getSupabase();
+  const current = await db
+    .from('patients')
+    .select('qualification')
+    .eq('clinic_id', session.tenant.clinicId)
+    .eq('id', patientId)
+    .maybeSingle();
+  const existing =
+    current.data && typeof current.data.qualification === 'object' && current.data.qualification !== null
+      ? (current.data.qualification as Record<string, unknown>)
+      : {};
+  const { error } = await db
+    .from('patients')
+    .update({ qualification: { ...existing, ...session.qualification } })
+    .eq('clinic_id', session.tenant.clinicId)
+    .eq('id', patientId);
+  if (error) console.error(`[call ${session.callId}] qualification merge failed:`, error.message);
+}
+
+async function saveQualification(session: CallSession, raw: unknown): Promise<ToolResult> {
+  const qualFields = session.tenant.vertical.qualificationFields;
+  if (qualFields.length === 0) {
+    return { success: false, reason: 'qualification is not used for this business' };
+  }
+
+  // Build the validator from the vertical pack: unknown keys are rejected,
+  // selects must match their options, booleans must be booleans.
+  const shape: Record<string, z.ZodTypeAny> = {};
+  for (const f of qualFields) {
+    shape[f.key] =
+      f.type === 'boolean'
+        ? z.boolean()
+        : f.options && f.options.length > 0
+          ? z.enum(f.options as [string, ...string[]])
+          : z.string().min(1);
+  }
+  const args = z.object({ fields: z.object(shape).partial().strict() }).parse(raw);
+
+  const provided = Object.fromEntries(
+    Object.entries(args.fields).filter(([, v]) => v !== undefined && v !== null),
+  );
+  if (Object.keys(provided).length === 0) {
+    return { success: false, reason: 'no qualification fields provided' };
+  }
+
+  session.qualification = { ...session.qualification, ...provided };
+  if (session.patientId) await mergePatientQualification(session, session.patientId);
+
+  const missingRequired = qualFields
+    .filter((f) => f.required && session.qualification[f.key] === undefined)
+    .map((f) => f.key);
+  return {
+    success: true,
+    saved: Object.keys(provided),
+    missing_required_before_booking: missingRequired,
+  };
 }
 
 const getSlotsArgs = z.object({
@@ -310,10 +431,23 @@ async function bookAppointment(session: CallSession, raw: unknown): Promise<Tool
     return { success: false, reason: 'unknown doctor' };
   }
 
+  // Vertical qualification gate: required fields must be saved before booking.
+  const missingQual = tenant.vertical.qualificationFields
+    .filter((f) => f.required && (session.qualification[f.key] === undefined || session.qualification[f.key] === ''))
+    .map((f) => f.key);
+  if (missingQual.length > 0) {
+    return {
+      success: false,
+      reason: 'qualification_incomplete',
+      missing: missingQual,
+      message: 'collect these details from the caller and record them with save_qualification, then book again',
+    };
+  }
+
   // Verify the patient belongs to THIS clinic.
   const patient = await db
     .from('patients')
-    .select('id, first_name, last_name')
+    .select('id, first_name, last_name, phone')
     .eq('clinic_id', tenant.clinicId)
     .eq('id', args.patient_id)
     .maybeSingle();
@@ -366,6 +500,15 @@ async function bookAppointment(session: CallSession, raw: unknown): Promise<Tool
   }
 
   session.patientId = args.patient_id;
+
+  // Fire-and-forget SMS confirmation — a failure must never break the booking.
+  if (patient.data.phone) {
+    sendBookingConfirmationSms(session, {
+      to: String(patient.data.phone),
+      spokenTime: spokenTime(startsAt.toISOString(), tenant.clinic.timezone),
+    });
+  }
+
   return {
     success: true,
     appointment_id: data.id,
@@ -595,6 +738,8 @@ async function endCall(session: CallSession): Promise<ToolResult> {
 const handlers: Record<string, (s: CallSession, args: unknown) => Promise<ToolResult>> = {
   find_patient: findPatient,
   create_patient: createPatient,
+  confirm_existing_patient: confirmExistingPatient,
+  save_qualification: saveQualification,
   get_available_slots: getAvailableSlots,
   book_appointment: bookAppointment,
   cancel_appointment: cancelAppointment,

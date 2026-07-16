@@ -4,6 +4,7 @@ import { getClinic } from '@/lib/get-clinic';
 import { createClient } from '@/lib/supabase/server';
 import { fmtDateTime, fmtDuration, fmtTime } from '@/lib/datetime';
 import { Card, EmptyState, OutcomeBadge, SpamBadge, StatusBadge } from '@/components/ui';
+import { QualificationList, hasQualification } from '@/components/qualification';
 import type { Appointment, Call, CallTranscript } from '@/lib/types';
 import { MarkSpamButton } from './mark-spam';
 
@@ -14,7 +15,8 @@ export default async function CallDetailPage({
 }: {
   params: { slug: string; id: string };
 }) {
-  const { clinic } = await getClinic(params.slug);
+  const { clinic, vertical } = await getClinic(params.slug);
+  const t = vertical.terminology;
   const supabase = createClient();
   const tz = clinic.timezone;
 
@@ -99,7 +101,16 @@ export default async function CallDetailPage({
         </div>
 
         <div className="space-y-6">
-          <Card title="Linked patient">
+          {transcript && hasQualification(transcript.qualification) && (
+            <Card title="Qualification">
+              <QualificationList
+                qualification={transcript.qualification}
+                fields={vertical.qualificationFields}
+              />
+            </Card>
+          )}
+
+          <Card title={`Linked ${t.contact.toLowerCase()}`}>
             {call.patients ? (
               <Link
                 href={`/${clinic.slug}/patients/${call.patients.id}`}
@@ -108,13 +119,13 @@ export default async function CallDetailPage({
                 {call.patients.first_name} {call.patients.last_name}
               </Link>
             ) : (
-              <p className="text-sm text-slate-400">No patient matched to this call.</p>
+              <p className="text-sm text-slate-400">No {t.contact.toLowerCase()} matched to this call.</p>
             )}
           </Card>
 
-          <Card title="Linked appointments">
+          <Card title={`Linked ${t.bookings.toLowerCase()}`}>
             {linkedAppointments.length === 0 ? (
-              <p className="text-sm text-slate-400">No appointments were created from this call.</p>
+              <p className="text-sm text-slate-400">No {t.bookings.toLowerCase()} were created from this call.</p>
             ) : (
               <ul className="divide-y divide-slate-100">
                 {linkedAppointments.map((a) => (
@@ -122,7 +133,7 @@ export default async function CallDetailPage({
                     <div>
                       <p className="text-sm font-medium text-slate-800">{fmtDateTime(a.starts_at, tz)}</p>
                       <p className="text-xs text-slate-400">
-                        {a.doctors?.name} · {a.appointment_types?.name ?? 'Appointment'}
+                        {a.doctors?.name} · {a.appointment_types?.name ?? t.booking}
                       </p>
                     </div>
                     <StatusBadge status={a.status} />

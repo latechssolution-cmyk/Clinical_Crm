@@ -15,7 +15,8 @@ export default async function PatientsPage({
   params: { slug: string };
   searchParams: { q?: string; new?: string };
 }) {
-  const { clinic } = await getClinic(params.slug);
+  const { clinic, vertical } = await getClinic(params.slug);
+  const t = vertical.terminology;
   const supabase = createClient();
   const q = (searchParams.q ?? '').trim();
 
@@ -38,18 +39,23 @@ export default async function PatientsPage({
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-lg font-semibold text-slate-900">Patients</h1>
+        <h1 className="text-lg font-semibold text-slate-900">{t.contacts}</h1>
         <Link
           href={`/${clinic.slug}/patients?new=1`}
           className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700"
         >
-          + New patient
+          + New {t.contact.toLowerCase()}
         </Link>
       </div>
 
       {showNew && (
-        <Card title="New patient">
-          <NewPatientForm slug={clinic.slug} />
+        <Card title={`New ${t.contact.toLowerCase()}`}>
+          <NewPatientForm
+            slug={clinic.slug}
+            contactLabel={t.contact}
+            showAddress={vertical.requiredContactFields.includes('address')}
+            showDateOfBirth={vertical.requiredContactFields.includes('date_of_birth')}
+          />
         </Card>
       )}
 
@@ -65,7 +71,7 @@ export default async function PatientsPage({
 
       <Card>
         {patients.length === 0 ? (
-          <EmptyState>{q ? 'No patients match your search.' : 'No patients yet.'}</EmptyState>
+          <EmptyState>{q ? `No ${t.contacts.toLowerCase()} match your search.` : `No ${t.contacts.toLowerCase()} yet.`}</EmptyState>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">

@@ -18,7 +18,8 @@ export default async function CallsPage({
   params: { slug: string };
   searchParams: { outcome?: string; from?: string; to?: string };
 }) {
-  const { clinic } = await getClinic(params.slug);
+  const { clinic, vertical } = await getClinic(params.slug);
+  const t = vertical.terminology;
   const supabase = createClient();
   const tz = clinic.timezone;
 
@@ -84,7 +85,7 @@ export default async function CallsPage({
                 <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-400">
                   <th className="pb-2 pr-4 font-medium">Time</th>
                   <th className="pb-2 pr-4 font-medium">From</th>
-                  <th className="pb-2 pr-4 font-medium">Patient</th>
+                  <th className="pb-2 pr-4 font-medium">{t.contact}</th>
                   <th className="hidden pb-2 pr-4 font-medium sm:table-cell">Duration</th>
                   <th className="pb-2 pr-4 font-medium">Outcome</th>
                   <th className="pb-2 font-medium"></th>

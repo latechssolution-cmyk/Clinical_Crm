@@ -4,16 +4,26 @@ import { useFormState, useFormStatus } from 'react-dom';
 import { createPatient } from './actions';
 import { btnPrimary, inputCls, labelCls } from '@/components/ui';
 
-function SubmitButton() {
+function SubmitButton({ contactLabel }: { contactLabel: string }) {
   const { pending } = useFormStatus();
   return (
     <button type="submit" disabled={pending} className={btnPrimary}>
-      {pending ? 'Saving…' : 'Create patient'}
+      {pending ? 'Saving…' : `Create ${contactLabel.toLowerCase()}`}
     </button>
   );
 }
 
-export function NewPatientForm({ slug }: { slug: string }) {
+export function NewPatientForm({
+  slug,
+  contactLabel = 'Patient',
+  showAddress = false,
+  showDateOfBirth = true,
+}: {
+  slug: string;
+  contactLabel?: string;
+  showAddress?: boolean;
+  showDateOfBirth?: boolean;
+}) {
   const [state, formAction] = useFormState(createPatient, null);
 
   return (
@@ -39,16 +49,24 @@ export function NewPatientForm({ slug }: { slug: string }) {
           <label className={labelCls}>Email</label>
           <input name="email" type="email" className={inputCls} />
         </div>
-        <div>
-          <label className={labelCls}>Date of birth</label>
-          <input name="date_of_birth" type="date" className={inputCls} />
-        </div>
+        {showDateOfBirth && (
+          <div>
+            <label className={labelCls}>Date of birth</label>
+            <input name="date_of_birth" type="date" className={inputCls} />
+          </div>
+        )}
+        {showAddress && (
+          <div className={showDateOfBirth ? '' : 'sm:col-span-2'}>
+            <label className={labelCls}>Address *</label>
+            <input name="address" required className={inputCls} placeholder="Street, city, state" />
+          </div>
+        )}
       </div>
       <div>
         <label className={labelCls}>Notes</label>
         <textarea name="notes" rows={2} className={inputCls} />
       </div>
-      <SubmitButton />
+      <SubmitButton contactLabel={contactLabel} />
     </form>
   );
 }

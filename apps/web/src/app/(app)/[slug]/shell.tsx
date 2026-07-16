@@ -4,36 +4,35 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
-const NAV = [
-  { label: 'Today', segment: '' },
-  { label: 'Schedule', segment: 'schedule' },
-  { label: 'Patients', segment: 'patients' },
-  { label: 'Calls', segment: 'calls' },
-  { label: 'Settings', segment: 'settings' },
-];
+export interface NavLabels {
+  /** e.g. "Appointments" (clinic) or "Inspections" (roofing) — for /schedule */
+  schedule: string;
+  /** e.g. "Patients" or "Leads" — for /patients */
+  patients: string;
+}
 
 const ICONS: Record<string, JSX.Element> = {
-  Today: (
+  today: (
     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2m0 14v2m9-9h-2M5 12H3m14.5-6.5-1.4 1.4M7 17l-1.4 1.4M17 17l1.4 1.4M7 7 5.6 5.6M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z" />
     </svg>
   ),
-  Schedule: (
+  schedule: (
     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M8 3v3m8-3v3M4 8h16M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Z" />
     </svg>
   ),
-  Patients: (
+  patients: (
     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M16 19a4 4 0 0 0-8 0m8 0h4a5 5 0 0 0-4-4.9M8 19H4a5 5 0 0 1 4-4.9M15 7a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
     </svg>
   ),
-  Calls: (
+  calls: (
     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M3 5.5C3 4.7 3.7 4 4.5 4h2.6c.7 0 1.3.5 1.5 1.2l.9 3a1.5 1.5 0 0 1-.8 1.8l-1.5.7a11.5 11.5 0 0 0 6.1 6.1l.7-1.5a1.5 1.5 0 0 1 1.8-.8l3 .9c.7.2 1.2.8 1.2 1.5v2.6c0 .8-.7 1.5-1.5 1.5H18C9.7 21 3 14.3 3 6v-.5Z" />
     </svg>
   ),
-  Settings: (
+  settings: (
     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M10.3 4.3a1.7 1.7 0 0 1 3.4 0l.1.7a1.7 1.7 0 0 0 2.5 1l.6-.3a1.7 1.7 0 0 1 2.4 2.4l-.4.6a1.7 1.7 0 0 0 1 2.5l.8.1a1.7 1.7 0 0 1 0 3.4l-.7.1a1.7 1.7 0 0 0-1 2.5l.3.6a1.7 1.7 0 0 1-2.4 2.4l-.6-.4a1.7 1.7 0 0 0-2.5 1l-.1.8a1.7 1.7 0 0 1-3.4 0l-.1-.7a1.7 1.7 0 0 0-2.5-1l-.6.3a1.7 1.7 0 0 1-2.4-2.4l.4-.6a1.7 1.7 0 0 0-1-2.5l-.8-.1a1.7 1.7 0 0 1 0-3.4l.7-.1a1.7 1.7 0 0 0 1-2.5l-.3-.6A1.7 1.7 0 0 1 7 5.7l.6.4a1.7 1.7 0 0 0 2.5-1l.2-.8ZM15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
     </svg>
@@ -44,17 +43,29 @@ export function AppShell({
   slug,
   clinicName,
   userEmail,
+  navLabels,
+  isPlatformAdmin = false,
   signOutAction,
   children,
 }: {
   slug: string;
   clinicName: string;
   userEmail: string;
+  navLabels: NavLabels;
+  isPlatformAdmin?: boolean;
   signOutAction: () => Promise<void>;
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
+
+  const NAV = [
+    { icon: 'today', label: 'Today', segment: '' },
+    { icon: 'schedule', label: navLabels.schedule, segment: 'schedule' },
+    { icon: 'patients', label: navLabels.patients, segment: 'patients' },
+    { icon: 'calls', label: 'Calls', segment: 'calls' },
+    { icon: 'settings', label: 'Settings', segment: 'settings' },
+  ];
 
   function isActive(segment: string) {
     const base = `/${slug}`;
@@ -69,7 +80,7 @@ export function AppShell({
         const active = isActive(item.segment);
         return (
           <Link
-            key={item.label}
+            key={item.icon}
             href={href}
             onClick={() => setOpen(false)}
             className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
@@ -78,7 +89,7 @@ export function AppShell({
                 : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
             }`}
           >
-            {ICONS[item.label]}
+            {ICONS[item.icon]}
             {item.label}
           </Link>
         );
@@ -103,6 +114,14 @@ export function AppShell({
           <span className="text-sm font-semibold text-slate-900 lg:pl-4">{clinicName}</span>
         </div>
         <div className="flex items-center gap-3">
+          {isPlatformAdmin && (
+            <Link
+              href="/admin"
+              className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-medium text-violet-700 hover:bg-violet-100"
+            >
+              Platform admin
+            </Link>
+          )}
           <span className="hidden text-xs text-slate-500 sm:block">{userEmail}</span>
           <form action={signOutAction}>
             <button

@@ -17,6 +17,8 @@ export interface Config {
   supabaseServiceRoleKey: string;
   twilioAuthToken: string;
   twilioAccountSid: string;
+  /** Twilio number to send SMS confirmations from. Empty = SMS disabled. */
+  twilioPhoneNumber: string;
   openaiApiKey: string;
   /** Public https base URL (e.g. ngrok tunnel). Empty in dev until set. */
   publicBaseUrl: string;
@@ -34,6 +36,7 @@ export const config: Config = {
   supabaseServiceRoleKey: env('SUPABASE_SERVICE_ROLE_KEY'),
   twilioAuthToken: env('TWILIO_AUTH_TOKEN'),
   twilioAccountSid: env('TWILIO_ACCOUNT_SID'),
+  twilioPhoneNumber: env('TWILIO_PHONE_NUMBER'),
   openaiApiKey: env('OPENAI_API_KEY'),
   publicBaseUrl: env('PUBLIC_BASE_URL').replace(/\/+$/, ''),
   openaiRealtimeModel: env('OPENAI_REALTIME_MODEL') || 'gpt-realtime',

@@ -18,6 +18,8 @@ export interface CallSession {
   transcript: TranscriptTurn[];
   /** Set when a tool positively identifies/creates a patient. */
   patientId: string | null;
+  /** Vertical qualification data collected via save_qualification (keys from the pack). */
+  qualification: Record<string, unknown>;
   /** Set by the end_call tool; bridge hangs up after the final audio. */
   endRequested: boolean;
   /** Set by flag_spam. */

@@ -14,7 +14,7 @@ export default async function SchedulePage({
   params: { slug: string };
   searchParams: { week?: string; doctor?: string };
 }) {
-  const { clinic } = await getClinic(params.slug);
+  const { clinic, vertical } = await getClinic(params.slug);
   const supabase = createClient();
   const tz = clinic.timezone;
 
@@ -43,6 +43,7 @@ export default async function SchedulePage({
   return (
     <ScheduleClient
       slug={clinic.slug}
+      terms={vertical.terminology}
       timezone={tz}
       today={today}
       weekStart={weekStart}

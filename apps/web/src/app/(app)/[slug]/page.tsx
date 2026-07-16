@@ -19,7 +19,8 @@ function Stat({ label, value }: { label: string; value: number }) {
 }
 
 export default async function TodayPage({ params }: { params: { slug: string } }) {
-  const { clinic } = await getClinic(params.slug);
+  const { clinic, vertical } = await getClinic(params.slug);
+  const t = vertical.terminology;
   const supabase = createClient();
   const tz = clinic.timezone;
 
@@ -71,7 +72,7 @@ export default async function TodayPage({ params }: { params: { slug: string } }
   const byDoctor = new Map<string, { name: string; appts: Appointment[] }>();
   for (const a of appointments) {
     const key = a.doctor_id;
-    if (!byDoctor.has(key)) byDoctor.set(key, { name: a.doctors?.name ?? 'Unknown doctor', appts: [] });
+    if (!byDoctor.has(key)) byDoctor.set(key, { name: a.doctors?.name ?? `Unknown ${t.provider.toLowerCase()}`, appts: [] });
     byDoctor.get(key)!.appts.push(a);
   }
 
@@ -92,23 +93,23 @@ export default async function TodayPage({ params }: { params: { slug: string } }
           href={`/${clinic.slug}/schedule`}
           className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700"
         >
-          Open schedule
+          Open {t.bookings.toLowerCase()}
         </Link>
       </div>
 
       {/* Quick stats */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Stat label="Appointments today" value={appointments.filter((a) => a.status !== 'cancelled').length} />
-        <Stat label="Appointments this week" value={weekCountRes.count ?? 0} />
+        <Stat label={`${t.bookings} today`} value={appointments.filter((a) => a.status !== 'cancelled').length} />
+        <Stat label={`${t.bookings} this week`} value={weekCountRes.count ?? 0} />
         <Stat label="Calls today" value={callsTodayRes.count ?? 0} />
-        <Stat label="New patients this week" value={newPatientsRes.count ?? 0} />
+        <Stat label={`New ${t.contacts.toLowerCase()} this week`} value={newPatientsRes.count ?? 0} />
       </div>
 
       <div className="grid gap-6 xl:grid-cols-2">
         {/* Today's appointments by doctor */}
-        <Card title="Today's appointments">
+        <Card title={`Today's ${t.bookings.toLowerCase()}`}>
           {byDoctor.size === 0 ? (
-            <EmptyState>No appointments scheduled for today.</EmptyState>
+            <EmptyState>No {t.bookings.toLowerCase()} scheduled for today.</EmptyState>
           ) : (
             <div className="space-y-5">
               {Array.from(byDoctor.entries()).map(([doctorId, group]) => (
@@ -125,9 +126,9 @@ export default async function TodayPage({ params }: { params: { slug: string } }
                           </span>
                           <div>
                             <p className="text-sm text-slate-800">
-                              {a.patients ? `${a.patients.first_name} ${a.patients.last_name}` : 'Unknown patient'}
+                              {a.patients ? `${a.patients.first_name} ${a.patients.last_name}` : `Unknown ${t.contact.toLowerCase()}`}
                             </p>
-                            <p className="text-xs text-slate-400">{a.appointment_types?.name ?? 'Appointment'}</p>
+                            <p className="text-xs text-slate-400">{a.appointment_types?.name ?? t.booking}</p>
                           </div>
                         </div>
                         <StatusBadge status={a.status} />

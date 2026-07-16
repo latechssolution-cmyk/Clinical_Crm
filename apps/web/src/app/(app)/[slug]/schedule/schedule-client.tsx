@@ -16,8 +16,24 @@ const BLOCK_STYLES: Record<AppointmentStatus, string> = {
   no_show: 'border-amber-300 bg-amber-50 hover:bg-amber-100',
 };
 
+export interface ScheduleTerms {
+  contact: string;
+  contacts: string;
+  booking: string;
+  bookings: string;
+  provider: string;
+  providers: string;
+}
+
+const DEFAULT_TERMS: ScheduleTerms = {
+  contact: 'Patient', contacts: 'Patients',
+  booking: 'Appointment', bookings: 'Appointments',
+  provider: 'Doctor', providers: 'Doctors',
+};
+
 export function ScheduleClient({
   slug,
+  terms = DEFAULT_TERMS,
   timezone,
   today,
   weekStart,
@@ -27,6 +43,7 @@ export function ScheduleClient({
   appointmentTypes,
 }: {
   slug: string;
+  terms?: ScheduleTerms;
   timezone: string;
   today: string;
   weekStart: string;
@@ -61,14 +78,14 @@ export function ScheduleClient({
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-lg font-semibold text-slate-900">Schedule</h1>
+        <h1 className="text-lg font-semibold text-slate-900">{terms.bookings}</h1>
         <div className="flex flex-wrap items-center gap-2">
           <select
             className={`${inputCls} w-auto`}
             value={doctorFilter}
             onChange={(e) => navigate(weekStart, e.target.value)}
           >
-            <option value="">All doctors</option>
+            <option value="">All {terms.providers.toLowerCase()}</option>
             {doctors.map((d) => (
               <option key={d.id} value={d.id}>
                 {d.name}
@@ -96,7 +113,7 @@ export function ScheduleClient({
             </button>
           </div>
           <button className={btnPrimary} onClick={() => setShowNew(true)}>
-            + New appointment
+            + New {terms.booking.toLowerCase()}
           </button>
         </div>
       </div>
@@ -128,7 +145,7 @@ export function ScheduleClient({
                       {fmtTime(a.starts_at, timezone)}
                     </span>
                     <span className="mt-0.5 block truncate text-slate-800">
-                      {a.patients ? `${a.patients.first_name} ${a.patients.last_name}` : 'Patient'}
+                      {a.patients ? `${a.patients.first_name} ${a.patients.last_name}` : terms.contact}
                     </span>
                     {!doctorFilter && (
                       <span className="block truncate text-[11px] text-slate-400">{a.doctors?.name}</span>
@@ -144,6 +161,7 @@ export function ScheduleClient({
       {selected && (
         <AppointmentPanel
           slug={slug}
+          terms={terms}
           timezone={timezone}
           appointment={selected}
           onClose={() => setSelected(null)}
@@ -169,11 +187,13 @@ export function ScheduleClient({
 
 function AppointmentPanel({
   slug,
+  terms,
   timezone,
   appointment: a,
   onClose,
 }: {
   slug: string;
+  terms: ScheduleTerms;
   timezone: string;
   appointment: Appointment;
   onClose: () => void;
@@ -240,7 +260,7 @@ function AppointmentPanel({
         <div className="mb-4 flex items-start justify-between">
           <div>
             <h2 className="text-base font-semibold text-slate-900">
-              {a.patients ? `${a.patients.first_name} ${a.patients.last_name}` : 'Appointment'}
+              {a.patients ? `${a.patients.first_name} ${a.patients.last_name}` : terms.booking}
             </h2>
             <p className="text-sm text-slate-500">
               {fmtDayLabel(localDateStr(new Date(a.starts_at), timezone))} · {fmtTime(a.starts_at, timezone)}–
@@ -251,7 +271,7 @@ function AppointmentPanel({
         </div>
 
         <dl className="mb-4 space-y-2 text-sm">
-          <div className="flex justify-between"><dt className="text-slate-500">Doctor</dt><dd className="text-slate-800">{a.doctors?.name ?? '—'}</dd></div>
+          <div className="flex justify-between"><dt className="text-slate-500">{terms.provider}</dt><dd className="text-slate-800">{a.doctors?.name ?? '—'}</dd></div>
           <div className="flex justify-between"><dt className="text-slate-500">Type</dt><dd className="text-slate-800">{a.appointment_types?.name ?? '—'}</dd></div>
           <div className="flex justify-between"><dt className="text-slate-500">Phone</dt><dd className="text-slate-800">{a.patients?.phone ?? '—'}</dd></div>
           <div className="flex justify-between"><dt className="text-slate-500">Status</dt><dd><StatusBadge status={a.status} /></dd></div>
@@ -270,7 +290,7 @@ function AppointmentPanel({
               Reschedule
             </button>
             <button className={btnDanger} onClick={() => setMode('cancel')}>
-              Cancel appointment
+              Cancel {terms.booking.toLowerCase()}
             </button>
           </div>
         )}
