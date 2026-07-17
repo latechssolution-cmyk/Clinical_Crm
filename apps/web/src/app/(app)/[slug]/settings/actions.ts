@@ -3,27 +3,10 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
-import type { Clinic, MemberRole } from '@/lib/types';
 
 type Result = { ok?: boolean; error?: string };
 
-async function requireClinic(slug: string): Promise<{ clinic: Clinic; role: MemberRole; userId: string }> {
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error('Not authenticated');
-  const { data: clinic } = await supabase.from('clinics').select('*').eq('slug', slug).maybeSingle();
-  if (!clinic) throw new Error('Clinic not found');
-  const { data: member } = await supabase
-    .from('clinic_members')
-    .select('role')
-    .eq('clinic_id', clinic.id)
-    .eq('user_id', user.id)
-    .maybeSingle();
-  if (!member) throw new Error('Not a member of this clinic');
-  return { clinic: clinic as Clinic, role: member.role as MemberRole, userId: user.id };
-}
+import { requireClinic } from '@/lib/require-clinic';
 
 function fail(e: unknown): Result {
   return { error: e instanceof Error ? e.message : 'Something went wrong' };
@@ -162,6 +145,15 @@ export async function addAvailabilityRule(input: z.infer<typeof ruleSchema>): Pr
   try {
     const { clinic } = await requireClinic(parsed.data.slug);
     const supabase = createClient();
+    // The doctor id must belong to this clinic — RLS only checks the row's own
+    // clinic_id, so a foreign doctor UUID would otherwise be accepted.
+    const { data: doctor } = await supabase
+      .from('doctors')
+      .select('id')
+      .eq('id', parsed.data.doctorId)
+      .eq('clinic_id', clinic.id)
+      .maybeSingle();
+    if (!doctor) return { error: 'Provider not found' };
     const { error } = await supabase.from('availability_rules').insert({
       clinic_id: clinic.id,
       doctor_id: parsed.data.doctorId,
@@ -212,6 +204,13 @@ export async function addAvailabilityException(input: z.infer<typeof exceptionSc
   try {
     const { clinic } = await requireClinic(d.slug);
     const supabase = createClient();
+    const { data: doctor } = await supabase
+      .from('doctors')
+      .select('id')
+      .eq('id', d.doctorId)
+      .eq('clinic_id', clinic.id)
+      .maybeSingle();
+    if (!doctor) return { error: 'Provider not found' };
     const { error } = await supabase.from('availability_exceptions').insert({
       clinic_id: clinic.id,
       doctor_id: d.doctorId,
@@ -331,6 +330,9 @@ const agentSchema = z.object({
   language: z.string().trim().min(2).max(10),
   custom_instructions: z.string().trim().max(8000).nullable(),
   faq: z.array(z.object({ q: z.string().trim().min(1).max(500), a: z.string().trim().min(1).max(2000) })).max(50),
+  knowledge: z
+    .array(z.object({ topic: z.string().trim().min(1).max(200), info: z.string().trim().min(1).max(4000) }))
+    .max(50),
   escalation_number: z.string().trim().regex(phoneRe).nullable().or(z.literal('').transform(() => null)),
   after_hours_behavior: z.enum(['full_service', 'message', 'announce_only']),
   enabled: z.boolean(),
@@ -352,6 +354,7 @@ export async function updateAgentConfig(input: z.infer<typeof agentSchema>): Pro
         language: fields.language,
         custom_instructions: fields.custom_instructions || null,
         faq: fields.faq,
+        knowledge: fields.knowledge,
         escalation_number: fields.escalation_number,
         after_hours_behavior: fields.after_hours_behavior,
         enabled: fields.enabled,
@@ -439,25 +442,10 @@ const phoneSchema = z.object({
   isPrimary: z.boolean(),
 });
 
+// Numbers are the global routing key — registration/assignment happens in the
+// platform admin console (/admin/numbers), not tenant settings. RLS enforces
+// this too (phones insert/update/delete are platform-admin-only).
 export async function addPhoneNumber(input: z.infer<typeof phoneSchema>): Promise<Result> {
-  const parsed = phoneSchema.safeParse(input);
-  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Invalid input' };
-  try {
-    const { clinic, role } = await requireClinic(parsed.data.slug);
-    if (role !== 'owner') return { error: 'Only clinic owners can manage phone numbers' };
-    const supabase = createClient();
-    const { error } = await supabase.from('phone_numbers').insert({
-      clinic_id: clinic.id,
-      number: parsed.data.number,
-      is_primary: parsed.data.isPrimary,
-    });
-    if (error) {
-      if (error.code === '23505') return { error: 'This number is already registered on the platform.' };
-      return { error: error.message };
-    }
-    revalidatePath(`/${parsed.data.slug}/settings/phone`);
-    return { ok: true };
-  } catch (e) {
-    return fail(e);
-  }
+  void phoneSchema.safeParse(input);
+  return { error: 'Phone numbers are assigned by the platform. Contact support to add a number.' };
 }

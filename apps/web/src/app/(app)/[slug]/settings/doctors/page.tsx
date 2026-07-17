@@ -6,7 +6,7 @@ import { DoctorsClient } from './doctors-client';
 export const dynamic = 'force-dynamic';
 
 export default async function DoctorsSettingsPage({ params }: { params: { slug: string } }) {
-  const { clinic, role } = await getClinic(params.slug);
+  const { clinic, role, vertical } = await getClinic(params.slug);
   const supabase = createClient();
 
   const [doctorsRes, rulesRes, excRes] = await Promise.all([
@@ -18,6 +18,11 @@ export default async function DoctorsSettingsPage({ params }: { params: { slug: 
   return (
     <DoctorsClient
       slug={clinic.slug}
+      terms={{
+        provider: vertical.terminology.provider,
+        providers: vertical.terminology.providers,
+        bookings: vertical.terminology.bookings,
+      }}
       canEdit={role === 'owner' || role === 'staff'}
       doctors={(doctorsRes.data ?? []) as Doctor[]}
       rules={(rulesRes.data ?? []) as AvailabilityRuleRow[]}

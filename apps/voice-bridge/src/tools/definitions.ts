@@ -33,7 +33,7 @@ export function getToolDefinitions(pack: VerticalPack): RealtimeTool[] {
         properties: {
           phone: { type: 'string', description: 'Phone number (any format; E.164 preferred)' },
           name: { type: 'string', description: 'Full or partial name' },
-          date_of_birth: { type: 'string', description: 'YYYY-MM-DD' },
+          ...(needsDob ? { date_of_birth: { type: 'string', description: 'YYYY-MM-DD' } } : {}),
         },
         required: [],
       },
@@ -48,20 +48,27 @@ export function getToolDefinitions(pack: VerticalPack): RealtimeTool[] {
           first_name: { type: 'string' },
           last_name: { type: 'string' },
           phone: { type: 'string', description: 'Phone number; defaults to caller ID if omitted' },
-          date_of_birth: { type: 'string', description: 'YYYY-MM-DD' },
-          address: {
-            type: 'string',
-            description: needsAddress
-              ? `Full street address${pack.id === 'roofing' ? ' of the property' : ''} — required`
-              : 'Street address (optional)',
-          },
+          ...(needsDob ? { date_of_birth: { type: 'string', description: 'YYYY-MM-DD — required' } } : {}),
+          ...(needsAddress
+            ? {
+                address: {
+                  type: 'string',
+                  description: 'Full street address of the property — required',
+                },
+              }
+            : {}),
           email: { type: 'string' },
           confirmed_not_duplicate: {
             type: 'boolean',
             description: 'Set true only after the caller confirmed a similar existing record is NOT them',
           },
         },
-        required: ['first_name', 'last_name'],
+        required: [
+          'first_name',
+          'last_name',
+          ...(needsDob ? ['date_of_birth'] : []),
+          ...(needsAddress ? ['address'] : []),
+        ],
       },
     },
     {

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useFormState, useFormStatus } from 'react-dom';
+import { VERTICALS } from '@clinical-crm/core';
 import { createClinicAction } from './actions';
 import { btnPrimary, inputCls, labelCls } from '@/components/ui';
 
@@ -58,7 +59,7 @@ function SubmitButton() {
   const { pending } = useFormStatus();
   return (
     <button type="submit" disabled={pending} className={`${btnPrimary} w-full`}>
-      {pending ? 'Creating clinic…' : 'Create clinic'}
+      {pending ? 'Creating workspace…' : 'Create workspace'}
     </button>
   );
 }
@@ -76,7 +77,32 @@ export function OnboardingForm() {
         <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{state.error}</p>
       )}
       <div>
-        <label className={labelCls} htmlFor="name">Clinic name</label>
+        <label className={labelCls}>Business type</label>
+        <div className="mt-1 grid grid-cols-2 gap-2">
+          {Object.values(VERTICALS).map((v, i) => (
+            <label
+              key={v.id}
+              className="flex cursor-pointer items-start gap-2 rounded-lg border border-slate-200 p-3 hover:border-teal-300 hover:bg-teal-50/40 has-[input:checked]:border-teal-500 has-[input:checked]:bg-teal-50"
+            >
+              <input
+                type="radio"
+                name="vertical"
+                value={v.id}
+                defaultChecked={i === 0}
+                className="mt-0.5"
+              />
+              <div>
+                <div className="text-sm font-medium text-slate-900">{v.label}</div>
+                <div className="text-xs text-slate-500">
+                  {v.terminology.contacts} · {v.terminology.bookings} · {v.terminology.providers}
+                </div>
+              </div>
+            </label>
+          ))}
+        </div>
+      </div>
+      <div>
+        <label className={labelCls} htmlFor="name">Business name</label>
         <input
           id="name"
           name="name"
@@ -84,7 +110,7 @@ export function OnboardingForm() {
           className={inputCls}
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="e.g. Lakeside Family Practice"
+          placeholder="e.g. Lakeside Family Practice or Skyline Roofing"
         />
         {slug && (
           <p className="mt-1 text-xs text-slate-400">

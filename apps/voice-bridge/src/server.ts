@@ -1,6 +1,7 @@
 import http from 'node:http';
 import twilio from 'twilio';
 import { config } from './config.js';
+import { mintStreamToken } from './stream-auth.js';
 import { getSupabase } from './db.js';
 import { resolveTenantByNumber, isBlockedNumber, type TenantContext } from './tenant.js';
 import { isWithinBusinessHours, describeBusinessHours } from './hours.js';
@@ -82,7 +83,7 @@ async function handleIncomingCall(req: http.IncomingMessage, res: http.ServerRes
   if (!tenant || tenant.clinic.status === 'suspended') {
     console.log(`[server] call to unknown/suspended number ${to} — rejecting`);
     if (tenant) {
-      twiml.say('This clinic is currently unavailable. Please try again later.');
+      twiml.say('This business is currently unavailable. Please try again later.');
       twiml.hangup();
     } else {
       twiml.reject();
@@ -118,7 +119,7 @@ async function handleIncomingCall(req: http.IncomingMessage, res: http.ServerRes
     if (behavior === 'announce_only') {
       const hours = describeBusinessHours(tenant.clinic.business_hours);
       twiml.say(
-        `Thank you for calling ${tenant.clinic.name}. The clinic is currently closed.` +
+        `Thank you for calling ${tenant.clinic.name}. We are currently closed.` +
           (hours ? ` Our hours are: ${hours}.` : '') +
           ' Please call back during business hours. Goodbye.',
       );
@@ -167,6 +168,10 @@ async function handleIncomingCall(req: http.IncomingMessage, res: http.ServerRes
   stream.parameter({ name: 'callSid', value: callSid });
   stream.parameter({ name: 'from', value: from });
   stream.parameter({ name: 'mode', value: mode });
+  // The /media WebSocket has no Twilio signature — this token is the only
+  // thing binding the stream to a webhook-validated call. Without it, anyone
+  // reaching the wss endpoint could claim any clinicId.
+  stream.parameter({ name: 'token', value: mintStreamToken(callId, tenant.clinicId) });
   sendTwiml(res, twiml);
 }
 

@@ -24,11 +24,29 @@ interface DayState {
   close: string;
 }
 
+// Seeds / older writers use named-day keys with window arrays; the form's own
+// save uses numeric keys. Read all shapes so a seeded tenant doesn't render
+// (and then silently get re-saved) as closed-all-week.
+const DAY_ALIASES: string[][] = [
+  ['0', 'sun', 'sunday'],
+  ['1', 'mon', 'monday'],
+  ['2', 'tue', 'tuesday'],
+  ['3', 'wed', 'wednesday'],
+  ['4', 'thu', 'thursday'],
+  ['5', 'fri', 'friday'],
+  ['6', 'sat', 'saturday'],
+];
+
 function initHours(bh: BusinessHours): DayState[] {
   return Array.from({ length: 7 }, (_, i) => {
-    const d = bh?.[String(i)];
-    if (!d) return { closed: true, open: '09:00', close: '17:00' };
-    return { closed: !!d.closed, open: d.open || '09:00', close: d.close || '17:00' };
+    const raw = DAY_ALIASES[i].map((k) => (bh as Record<string, unknown>)?.[k]).find((v) => v !== undefined);
+    const d = (Array.isArray(raw) ? raw[0] : raw) as
+      | { open?: string; close?: string; start?: string; end?: string; closed?: boolean }
+      | undefined;
+    const open = d?.open ?? d?.start;
+    const close = d?.close ?? d?.end;
+    if (!d || d.closed === true || !open || !close) return { closed: true, open: open || '09:00', close: close || '17:00' };
+    return { closed: false, open, close };
   });
 }
 
@@ -78,13 +96,13 @@ export function GeneralForm({ clinic, canEdit }: { clinic: Clinic; canEdit: bool
       {error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
       {!canEdit && (
         <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">
-          Only clinic owners can change these settings.
+          Only owners can change these settings.
         </p>
       )}
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
-          <label className={labelCls}>Clinic name</label>
+          <label className={labelCls}>Business name</label>
           <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} disabled={!canEdit} />
         </div>
         <div>

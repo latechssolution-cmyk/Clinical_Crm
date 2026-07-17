@@ -177,6 +177,7 @@ export interface AgentConfig {
   language: string;
   custom_instructions: string | null;
   faq: { q: string; a: string }[];
+  knowledge: { topic: string; info: string }[];
   booking_policy: {
     min_notice_minutes?: number;
     max_advance_days?: number;

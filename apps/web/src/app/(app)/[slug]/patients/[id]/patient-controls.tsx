@@ -42,7 +42,7 @@ export function NotesEditor({
         className={inputCls}
         value={notes}
         onChange={(e) => setNotes(e.target.value)}
-        placeholder="Clinical or administrative notes…"
+        placeholder="Internal notes…"
       />
       <button className={btnPrimary} onClick={save} disabled={pending}>
         {pending ? 'Saving…' : saved ? 'Saved ✓' : 'Save notes'}

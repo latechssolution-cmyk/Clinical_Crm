@@ -9,9 +9,9 @@ export default function OnboardingPage() {
           <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-teal-600 text-lg font-bold text-white">
             +
           </div>
-          <h1 className="text-xl font-semibold text-slate-900">Set up your clinic</h1>
+          <h1 className="text-xl font-semibold text-slate-900">Set up your business</h1>
           <p className="mt-1 text-sm text-slate-500">
-            Create your clinic workspace. You can add doctors and configure the AI receptionist next.
+            Create your workspace. You can add your team and configure the AI receptionist next.
           </p>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">

@@ -171,6 +171,7 @@ export function ScheduleClient({
       {showNew && (
         <NewAppointmentModal
           slug={slug}
+          terms={terms}
           timezone={timezone}
           today={today}
           doctors={doctors.filter((d) => d.active)}
@@ -299,7 +300,7 @@ function AppointmentPanel({
           <div className="space-y-3">
             <div>
               <label className={labelCls}>Cancellation reason</label>
-              <input className={inputCls} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. patient request" />
+              <input className={inputCls} value={reason} onChange={(e) => setReason(e.target.value)} placeholder={`e.g. ${terms.contact.toLowerCase()} request`} />
             </div>
             <div className="flex gap-2">
               <button className={btnDanger} disabled={pending} onClick={doCancel}>

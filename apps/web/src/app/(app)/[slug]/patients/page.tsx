@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { phoneTail } from '@clinical-crm/core';
 import { getClinic } from '@/lib/get-clinic';
 import { createClient } from '@/lib/supabase/server';
 import { fmtDate } from '@/lib/datetime';
@@ -29,7 +30,14 @@ export default async function PatientsPage({
 
   if (q) {
     const safe = q.replace(/[%_,()]/g, ' ').trim();
-    query = query.or(`first_name.ilike.%${safe}%,last_name.ilike.%${safe}%,phone.ilike.%${safe}%`);
+    const filters = [`first_name.ilike.%${safe}%`, `last_name.ilike.%${safe}%`, `phone.ilike.%${safe}%`];
+    // Phone search: stored numbers are E.164 (+15551234567), but users type
+    // formatted input like "(555) 123-4567" — match on the digit tail too.
+    const digits = q.replace(/\D/g, '');
+    if (digits.length >= 4) {
+      filters.push(`phone.like.%${phoneTail(digits, 7)}`);
+    }
+    query = query.or(filters.join(','));
   }
 
   const { data } = await query;

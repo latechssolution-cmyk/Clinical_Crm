@@ -3,12 +3,15 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
+import { VERTICALS } from '@clinical-crm/core';
 import { createClient } from '@/lib/supabase/server';
 import { requirePlatformAdmin } from '@/lib/platform-admin';
 
 const CreateTenantSchema = z.object({
   name: z.string().min(2).max(120),
-  vertical: z.enum(['clinic', 'roofing']),
+  // Single source of truth: the vertical registry in packages/core.
+  // Adding a vertical pack there makes it valid here with no edit.
+  vertical: z.string().refine((v) => v in VERTICALS, 'unknown vertical'),
   timezone: z.string().min(1),
   country: z.string().length(2).default('US'),
 });

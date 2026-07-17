@@ -39,11 +39,11 @@ export function PhoneClient({
 
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-100 px-5 py-3">
-          <h2 className="text-sm font-semibold text-slate-700">Clinic phone numbers</h2>
+          <h2 className="text-sm font-semibold text-slate-700">Business phone numbers</h2>
         </div>
         {numbers.length === 0 ? (
           <p className="px-5 py-6 text-center text-sm text-slate-400">
-            No phone numbers connected yet. Inbound calls are routed to your clinic by these numbers.
+            No phone numbers connected yet. Inbound calls are routed to your business by these numbers.
           </p>
         ) : (
           <ul className="divide-y divide-slate-100">
@@ -96,7 +96,7 @@ export function PhoneClient({
         </div>
       ) : (
         <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">
-          Only clinic owners can manage phone numbers.
+          Only owners can manage phone numbers.
         </p>
       )}
     </div>

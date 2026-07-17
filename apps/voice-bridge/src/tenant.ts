@@ -32,6 +32,8 @@ export interface AgentConfigRow {
   language: string;
   custom_instructions: string | null;
   faq: Array<{ q?: string; a?: string }>;
+  /** free-form business knowledge entries the agent answers questions from */
+  knowledge: Array<{ topic?: string; info?: string }>;
   booking_policy: Record<string, unknown>;
   escalation_number: string | null;
   after_hours_behavior: 'full_service' | 'message' | 'announce_only';
@@ -125,6 +127,7 @@ async function loadContext(clinicId: string): Promise<TenantContext | null> {
       language: 'en',
       custom_instructions: null,
       faq: [],
+      knowledge: [],
       booking_policy: {},
       escalation_number: null,
       after_hours_behavior: 'message',

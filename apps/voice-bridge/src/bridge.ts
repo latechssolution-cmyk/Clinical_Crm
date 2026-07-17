@@ -6,6 +6,7 @@ import { buildInstructions, type ServiceMode } from './instructions.js';
 import { getToolDefinitions } from './tools/definitions.js';
 import { executeTool } from './tools/executor.js';
 import { finalizeCall } from './finalize.js';
+import { verifyStreamToken } from './stream-auth.js';
 import type { CallSession } from './session.js';
 
 const END_MARK = 'end-of-call';
@@ -303,6 +304,13 @@ export function createMediaWss(): WebSocketServer {
             const clinicId = params.clinicId ?? '';
             const callId = params.callId ?? '';
             const mode: ServiceMode = params.mode === 'message' ? 'message' : 'full_service';
+            // The token minted by the (Twilio-signature-validated) webhook is
+            // the stream's only credential — reject spoofed clinicId sessions.
+            if (!verifyStreamToken(params.token ?? '', callId, clinicId)) {
+              console.warn('[bridge] stream start with missing/invalid token — closing');
+              twilioWs.close();
+              return;
+            }
             const tenant = clinicId ? await loadTenantByClinicId(clinicId) : null;
             if (!tenant || !callId) {
               console.error('[bridge] stream start with unknown tenant/call — closing');

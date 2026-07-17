@@ -3,18 +3,26 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
-const TABS = [
-  { label: 'General', segment: '' },
-  { label: 'Doctors', segment: 'doctors' },
-  { label: 'Appointment types', segment: 'appointment-types' },
-  { label: 'AI Receptionist', segment: 'ai' },
-  { label: 'Team', segment: 'team' },
-  { label: 'Phone', segment: 'phone' },
-];
-
-export function SettingsNav({ slug }: { slug: string }) {
+export function SettingsNav({
+  slug,
+  providersLabel,
+  bookingLabel,
+}: {
+  slug: string;
+  providersLabel: string;
+  bookingLabel: string;
+}) {
   const pathname = usePathname();
   const base = `/${slug}/settings`;
+
+  const TABS = [
+    { label: 'General', segment: '' },
+    { label: providersLabel, segment: 'doctors' },
+    { label: `${bookingLabel} types`, segment: 'appointment-types' },
+    { label: 'AI Receptionist', segment: 'ai' },
+    { label: 'Team', segment: 'team' },
+    { label: 'Phone', segment: 'phone' },
+  ];
 
   return (
     <nav className="flex flex-wrap gap-1 border-b border-slate-200 pb-px">

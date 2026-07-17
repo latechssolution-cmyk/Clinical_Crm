@@ -91,6 +91,14 @@ export const VERTICALS: Record<VerticalId, VerticalPack> = {
   },
 };
 
+/** Unknown vertical ids we have already warned about (once per id, not per call). */
+const warnedUnknownVerticals = new Set<string>();
+
 export function getVertical(id: string | null | undefined): VerticalPack {
-  return VERTICALS[(id as VerticalId) ?? 'clinic'] ?? VERTICALS.clinic;
+  const pack = VERTICALS[(id as VerticalId) ?? 'clinic'];
+  if (!pack && id != null && !warnedUnknownVerticals.has(id)) {
+    warnedUnknownVerticals.add(id);
+    console.warn(`[verticals] unknown vertical id "${id}" — falling back to clinic pack (registry/DB skew?)`);
+  }
+  return pack ?? VERTICALS.clinic;
 }

@@ -31,6 +31,7 @@ function CopyLink({ token }: { token: string }) {
 
 export function TeamClient({
   slug,
+  providerLabel,
   isOwner,
   currentUserId,
   currentUserEmail,
@@ -38,6 +39,7 @@ export function TeamClient({
   invitations,
 }: {
   slug: string;
+  providerLabel: string;
   isOwner: boolean;
   currentUserId: string;
   currentUserEmail: string;
@@ -103,14 +105,14 @@ export function TeamClient({
                   className={inputCls}
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="colleague@clinic.com"
+                  placeholder="colleague@example.com"
                 />
               </div>
               <div>
                 <label className={labelCls}>Role</label>
                 <select className={`${inputCls} w-auto`} value={role} onChange={(e) => setRole(e.target.value as MemberRole)}>
                   <option value="staff">Staff</option>
-                  <option value="doctor">Doctor</option>
+                  <option value="doctor">{providerLabel}</option>
                   <option value="owner">Owner</option>
                 </select>
               </div>
@@ -164,7 +166,7 @@ export function TeamClient({
         </>
       ) : (
         <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">
-          Only clinic owners can invite or remove team members.
+          Only owners can invite or remove team members.
         </p>
       )}
     </div>

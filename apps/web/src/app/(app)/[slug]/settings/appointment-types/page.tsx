@@ -6,7 +6,7 @@ import { TypesClient } from './types-client';
 export const dynamic = 'force-dynamic';
 
 export default async function AppointmentTypesPage({ params }: { params: { slug: string } }) {
-  const { clinic, role } = await getClinic(params.slug);
+  const { clinic, role, vertical } = await getClinic(params.slug);
   const supabase = createClient();
 
   const { data } = await supabase
@@ -18,6 +18,7 @@ export default async function AppointmentTypesPage({ params }: { params: { slug:
   return (
     <TypesClient
       slug={clinic.slug}
+      bookingLabel={vertical.terminology.booking}
       canEdit={role === 'owner' || role === 'staff'}
       types={(data ?? []) as AppointmentType[]}
     />

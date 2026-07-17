@@ -2,6 +2,7 @@
 
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
+import { VERTICALS } from '@clinical-crm/core';
 import { createClient } from '@/lib/supabase/server';
 
 const schema = z.object({
@@ -13,6 +14,7 @@ const schema = z.object({
     .max(80)
     .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Invalid slug'),
   timezone: z.string().trim().min(1).max(64),
+  vertical: z.enum(Object.keys(VERTICALS) as [string, ...string[]]),
 });
 
 export async function createClinicAction(
@@ -23,6 +25,7 @@ export async function createClinicAction(
     name: formData.get('name'),
     slug: formData.get('slug'),
     timezone: formData.get('timezone'),
+    vertical: formData.get('vertical'),
   });
   if (!parsed.success) {
     return { error: 'Please check the form — ' + parsed.error.issues[0]?.message };
@@ -33,6 +36,7 @@ export async function createClinicAction(
     p_name: parsed.data.name,
     p_slug: parsed.data.slug,
     p_timezone: parsed.data.timezone,
+    p_vertical: parsed.data.vertical,
   });
 
   if (error) {

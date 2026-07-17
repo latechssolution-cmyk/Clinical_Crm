@@ -3,27 +3,21 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
+import { normalizePhone } from '@clinical-crm/core';
 import { createClient } from '@/lib/supabase/server';
+import { requireClinic as requireClinicShared } from '@/lib/require-clinic';
 import type { Clinic } from '@/lib/types';
 
 async function requireClinic(slug: string): Promise<Clinic> {
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error('Not authenticated');
-  const { data: clinic } = await supabase.from('clinics').select('*').eq('slug', slug).maybeSingle();
-  if (!clinic) throw new Error('Clinic not found');
-  return clinic as Clinic;
+  const { clinic } = await requireClinicShared(slug);
+  return clinic;
 }
-
-const phoneRegex = /^\+[1-9]\d{6,14}$/;
 
 const createSchema = z.object({
   slug: z.string(),
   first_name: z.string().trim().min(1).max(80),
   last_name: z.string().trim().min(1).max(80),
-  phone: z.string().trim().regex(phoneRegex, 'Phone must be E.164, e.g. +15551234567'),
+  phone: z.string().trim().min(1, 'Phone is required').max(30),
   email: z.string().trim().email().max(200).optional().or(z.literal('')),
   date_of_birth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().or(z.literal('')),
   address: z.string().trim().max(400).optional().or(z.literal('')),
@@ -53,6 +47,11 @@ export async function createPatient(
     return { error: e instanceof Error ? e.message : 'Unauthorized' };
   }
 
+  const norm = normalizePhone(parsed.data.phone, clinic.default_country || 'US');
+  if (!norm.ok || !norm.e164) {
+    return { error: 'Enter a valid phone number, e.g. (555) 123-4567 or +15551234567.' };
+  }
+
   const supabase = createClient();
   const { data, error } = await supabase
     .from('patients')
@@ -60,7 +59,7 @@ export async function createPatient(
       clinic_id: clinic.id,
       first_name: parsed.data.first_name,
       last_name: parsed.data.last_name,
-      phone: parsed.data.phone,
+      phone: norm.e164,
       email: parsed.data.email || null,
       date_of_birth: parsed.data.date_of_birth || null,
       address: parsed.data.address || null,
@@ -83,7 +82,7 @@ const updateSchema = z.object({
   patientId: z.string().uuid(),
   first_name: z.string().trim().min(1).max(80).optional(),
   last_name: z.string().trim().min(1).max(80).optional(),
-  phone: z.string().trim().regex(phoneRegex).optional(),
+  phone: z.string().trim().min(1).max(30).optional(),
   email: z.string().trim().email().max(200).nullable().optional(),
   date_of_birth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   address: z.string().trim().max(400).nullable().optional(),
@@ -97,6 +96,13 @@ export async function updatePatient(input: z.infer<typeof updateSchema>): Promis
     const clinic = await requireClinic(parsed.data.slug);
     const supabase = createClient();
     const { slug, patientId, ...fields } = parsed.data;
+    if (fields.phone !== undefined) {
+      const norm = normalizePhone(fields.phone, clinic.default_country || 'US');
+      if (!norm.ok || !norm.e164) {
+        return { error: 'Enter a valid phone number, e.g. (555) 123-4567 or +15551234567.' };
+      }
+      fields.phone = norm.e164;
+    }
     const { error } = await supabase
       .from('patients')
       .update(fields)

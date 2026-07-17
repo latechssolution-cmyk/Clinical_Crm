@@ -78,7 +78,7 @@ export default function LoginPage() {
             +
           </div>
           <h1 className="text-xl font-semibold text-slate-900">Clinical CRM</h1>
-          <p className="mt-1 text-sm text-slate-500">Sign in to your clinic workspace</p>
+          <p className="mt-1 text-sm text-slate-500">Sign in to your workspace</p>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
           <Suspense>

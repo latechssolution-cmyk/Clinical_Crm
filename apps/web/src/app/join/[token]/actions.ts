@@ -70,13 +70,21 @@ export async function acceptInvitation(
   const svc = admin();
   const { data: invite } = await svc
     .from('invitations')
-    .select('id, clinic_id, role, expires_at, accepted_at, clinics(slug)')
+    .select('id, clinic_id, email, role, expires_at, accepted_at, clinics(slug)')
     .eq('token', token)
     .maybeSingle();
 
   if (!invite) return { error: 'This invitation does not exist.' };
   if (invite.accepted_at) return { error: 'This invitation was already used.' };
   if (new Date(invite.expires_at) < new Date()) return { error: 'This invitation has expired.' };
+
+  // The token alone must not be a bearer credential — a forwarded invite email
+  // would otherwise grant membership (up to owner role) to whoever clicks it.
+  if ((invite.email ?? '').trim().toLowerCase() !== (user.email ?? '').trim().toLowerCase()) {
+    return {
+      error: `This invitation was sent to ${invite.email}. Sign in with that email address to accept it.`,
+    };
+  }
 
   const { error: memberError } = await svc.from('clinic_members').insert({
     clinic_id: invite.clinic_id,

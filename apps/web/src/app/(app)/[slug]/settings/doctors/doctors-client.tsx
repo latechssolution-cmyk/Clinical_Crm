@@ -15,19 +15,29 @@ import {
   updateDoctor,
 } from '../actions';
 
+export interface DoctorsTerms {
+  provider: string;
+  providers: string;
+  bookings: string;
+}
+
 export function DoctorsClient({
   slug,
+  terms,
   canEdit,
   doctors,
   rules,
   exceptions,
 }: {
   slug: string;
+  terms: DoctorsTerms;
   canEdit: boolean;
   doctors: Doctor[];
   rules: AvailabilityRuleRow[];
   exceptions: AvailabilityExceptionRow[];
 }) {
+  const providerLc = terms.provider.toLowerCase();
+  const providersLc = terms.providers.toLowerCase();
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -49,21 +59,21 @@ export function DoctorsClient({
       {error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
       {!canEdit && (
         <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">
-          Only owners and staff can manage doctors.
+          Only owners and staff can manage {providersLc}.
         </p>
       )}
 
       {canEdit && (
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <h3 className="mb-3 text-sm font-semibold text-slate-700">Add doctor</h3>
+          <h3 className="mb-3 text-sm font-semibold text-slate-700">Add {providerLc}</h3>
           <div className="flex flex-wrap items-end gap-3">
             <div className="flex-1 min-w-[180px]">
               <label className={labelCls}>Name</label>
-              <input className={inputCls} value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Dr. Jane Smith" />
+              <input className={inputCls} value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Jane Smith" />
             </div>
             <div className="flex-1 min-w-[160px]">
               <label className={labelCls}>Specialty</label>
-              <input className={inputCls} value={newSpecialty} onChange={(e) => setNewSpecialty(e.target.value)} placeholder="General practice" />
+              <input className={inputCls} value={newSpecialty} onChange={(e) => setNewSpecialty(e.target.value)} placeholder="Specialty or role" />
             </div>
             <button
               className={btnPrimary}
@@ -87,13 +97,14 @@ export function DoctorsClient({
 
       {doctors.length === 0 ? (
         <p className="py-8 text-center text-sm text-slate-400">
-          No doctors yet. Add your first doctor above to start accepting appointments.
+          No {providersLc} yet. Add your first {providerLc} above to start accepting {terms.bookings.toLowerCase()}.
         </p>
       ) : (
         doctors.map((d) => (
           <DoctorCard
             key={d.id}
             slug={slug}
+            providerLc={providerLc}
             canEdit={canEdit}
             doctor={d}
             rules={rules.filter((r) => r.doctor_id === d.id)}
@@ -111,6 +122,7 @@ export function DoctorsClient({
 
 function DoctorCard({
   slug,
+  providerLc,
   canEdit,
   doctor,
   rules,
@@ -121,6 +133,7 @@ function DoctorCard({
   pending,
 }: {
   slug: string;
+  providerLc: string;
   canEdit: boolean;
   doctor: Doctor;
   rules: AvailabilityRuleRow[];
@@ -204,7 +217,7 @@ function DoctorCard({
             </h4>
             {rules.length === 0 ? (
               <p className="mb-2 text-sm text-slate-400">
-                No availability yet — this doctor has no bookable slots.
+                No availability yet — this {providerLc} has no bookable slots.
               </p>
             ) : (
               <ul className="mb-2 space-y-1">

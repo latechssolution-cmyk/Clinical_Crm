@@ -129,6 +129,21 @@ ${requiredLabels.length > 0 ? `You MUST collect and save the required fields (${
 ${faq}`);
   }
 
+  // Free-form business knowledge: pricing ranges, services, service areas,
+  // policies — anything the business wants the agent able to answer.
+  const knowledge = Array.isArray(agentConfig.knowledge)
+    ? agentConfig.knowledge
+        .filter((k) => k && k.info)
+        .map((k) => (k.topic ? `### ${k.topic}\n${k.info}` : String(k.info)))
+        .join('\n\n')
+    : '';
+  if (knowledge) {
+    sections.push(`## Business knowledge (answer caller questions from this)
+Use this information to answer questions naturally (costs, services, coverage, policies...). Where a price is given as a range or estimate, present it as such — make clear the exact figure depends on the specifics and that ${clinic.name} will confirm. If a caller asks something NOT covered here or elsewhere in these instructions, do NOT guess or invent an answer: say you'll have someone follow up, and record the question with save_call_note.
+
+${knowledge}`);
+  }
+
   if (agentConfig.greeting) {
     sections.push(`## Greeting
 Open the call with this greeting (adapt naturally, do not read robotically): "${agentConfig.greeting}"`);
@@ -149,14 +164,15 @@ ${clinic.name} is currently CLOSED. Do NOT book, cancel, or reschedule ${booking
   sections.push(`## Hard rules (never break these)
 1. If the caller describes an emergency: ${vertical.emergencyGuidance}${agentConfig.escalation_number ? ` Also offer that the urgent line is ${agentConfig.escalation_number}.` : ''} Use save_call_note with important: true to record it.
 2. Before booking, cancelling, or rescheduling ANYTHING you must identify the caller: collect and verbally confirm their ${identityFields}. Use find_patient first (their caller ID is a good starting point); create_patient only if no match exists.
-3. If a tool returns invalid_phone, ask the caller to repeat their phone number slowly, digit by digit, then try again. If create_patient returns possible_duplicate, ask the caller: "I found an existing record for NAME with a number ending in XXXX — is that you?" If yes, call confirm_existing_patient with that id; if no, call create_patient again with confirmed_not_duplicate set to true.
+3. Phone numbers: let the caller say their number naturally, at their own pace — NEVER ask them to dictate digit by digit up front. Then read it back clearly in small groups and get a yes: "Got it — just to confirm, that's nine two three, three two nine, three nine seven, three seven nine?" Only pass the number to a tool after the caller confirms. If a tool still returns invalid_phone, or the caller corrects you twice, THEN ask them to repeat it slowly digit by digit as a last resort. If create_patient returns possible_duplicate, ask the caller: "I found an existing record for NAME with a number ending in XXXX — is that you?" If yes, call confirm_existing_patient with that id; if no, call create_patient again with confirmed_not_duplicate set to true.
 4. After any booking, cancellation, or reschedule, read the result back to the caller (${provider}, date, time) and get a verbal confirmation.
 5. Only offer ${booking} times returned by get_available_slots. Never invent availability.
 6. Use the tool IDs (doctor_id, appointment_type_id, patient_id) exactly as given by tools or the lists above. Never fabricate IDs.
 7. If a booking fails because the slot was just taken, apologize briefly and offer the next alternatives.
 8. ${spamRule}
 9. You are on a VOICE call: keep replies short (one or two sentences), natural, and conversational. Say dates and times in words, never read out IDs, ISO timestamps, or internal identifiers.
-10. When the conversation is complete, say a brief goodbye and call the end_call tool.`);
+10. NEVER go silent on the caller. Whenever you are about to use a tool that looks something up or saves something (finding a record, checking availability, booking), FIRST say a short natural filler in the same breath — "One moment, let me check that for you", "Let me pull that up", "Just a second while I get that booked" — and THEN call the tool. The caller must always hear something before any pause.
+11. When the conversation is complete, say a brief goodbye and call the end_call tool.`);
 
   if (agentConfig.custom_instructions) {
     sections.push(`## Business-specific instructions

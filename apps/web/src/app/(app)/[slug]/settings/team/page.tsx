@@ -6,7 +6,7 @@ import { TeamClient } from './team-client';
 export const dynamic = 'force-dynamic';
 
 export default async function TeamSettingsPage({ params }: { params: { slug: string } }) {
-  const { clinic, role, user } = await getClinic(params.slug);
+  const { clinic, role, user, vertical } = await getClinic(params.slug);
   const supabase = createClient();
 
   const [membersRes, invitesRes] = await Promise.all([
@@ -23,6 +23,7 @@ export default async function TeamSettingsPage({ params }: { params: { slug: str
   return (
     <TeamClient
       slug={clinic.slug}
+      providerLabel={vertical.terminology.provider}
       isOwner={role === 'owner'}
       currentUserId={user.id}
       currentUserEmail={user.email ?? ''}

@@ -20,13 +20,17 @@ const LANGUAGES = [
 
 export function AiForm({
   slug,
+  terms,
   config,
   canEdit,
 }: {
   slug: string;
+  terms: { contact: string; bookings: string };
   config: AgentConfig;
   canEdit: boolean;
 }) {
+  const contactLc = terms.contact.toLowerCase();
+  const bookingsLc = terms.bookings.toLowerCase();
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -37,6 +41,9 @@ export function AiForm({
   const [language, setLanguage] = useState(config.language);
   const [instructions, setInstructions] = useState(config.custom_instructions ?? '');
   const [faq, setFaq] = useState<{ q: string; a: string }[]>(Array.isArray(config.faq) ? config.faq : []);
+  const [knowledge, setKnowledge] = useState<{ topic: string; info: string }[]>(
+    Array.isArray(config.knowledge) ? config.knowledge : [],
+  );
   const [escalation, setEscalation] = useState(config.escalation_number ?? '');
   const [afterHours, setAfterHours] = useState(config.after_hours_behavior);
   const [enabled, setEnabled] = useState(config.enabled);
@@ -46,6 +53,7 @@ export function AiForm({
   function save() {
     setError(null);
     const cleanFaq = faq.filter((f) => f.q.trim() && f.a.trim());
+    const cleanKnowledge = knowledge.filter((k) => k.topic.trim() && k.info.trim());
     startTransition(async () => {
       const res = await updateAgentConfig({
         slug,
@@ -54,6 +62,7 @@ export function AiForm({
         language,
         custom_instructions: instructions.trim() || null,
         faq: cleanFaq,
+        knowledge: cleanKnowledge,
         escalation_number: escalation.trim() || null,
         after_hours_behavior: afterHours,
         enabled,
@@ -72,7 +81,7 @@ export function AiForm({
       {error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
       {!canEdit && (
         <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">
-          Only clinic owners can change AI receptionist settings.
+          Only owners can change AI receptionist settings.
         </p>
       )}
 
@@ -198,14 +207,66 @@ export function AiForm({
         </div>
       </div>
 
+      {/* Business knowledge editor */}
+      <div>
+        <h3 className="mb-1 text-sm font-semibold text-slate-700">Business knowledge</h3>
+        <p className="mb-2 text-xs text-slate-500">
+          Details the AI can answer questions from — pricing ranges, services offered, service areas,
+          payment options, policies. Anything not covered here, the AI takes a message instead of guessing.
+        </p>
+        <div className="space-y-3">
+          {knowledge.map((k, i) => (
+            <div key={i} className="rounded-xl border border-slate-200 bg-white p-3">
+              <div className="flex items-start gap-2">
+                <div className="flex-1 space-y-2">
+                  <input
+                    className={inputCls}
+                    placeholder="Topic (e.g. Pricing)"
+                    value={k.topic}
+                    disabled={!canEdit}
+                    onChange={(e) =>
+                      setKnowledge(knowledge.map((x, j) => (j === i ? { ...x, topic: e.target.value } : x)))
+                    }
+                  />
+                  <textarea
+                    rows={3}
+                    className={inputCls}
+                    placeholder="What the AI should know and say (e.g. Full roof replacements typically range $8,000–$25,000 depending on size and material; inspections are free.)"
+                    value={k.info}
+                    disabled={!canEdit}
+                    onChange={(e) =>
+                      setKnowledge(knowledge.map((x, j) => (j === i ? { ...x, info: e.target.value } : x)))
+                    }
+                  />
+                </div>
+                {canEdit && (
+                  <button
+                    className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                    onClick={() => setKnowledge(knowledge.filter((_, j) => j !== i))}
+                    aria-label="Remove knowledge entry"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+          {canEdit && (
+            <button className={btnSecondary} onClick={() => setKnowledge([...knowledge, { topic: '', info: '' }])}>
+              + Add knowledge
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* Booking policy (read only) */}
       <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
         <h3 className="mb-2 text-sm font-semibold text-slate-700">Booking policy (read-only)</h3>
         <dl className="grid gap-2 text-sm sm:grid-cols-2">
           <div><dt className="text-xs text-slate-400">Minimum notice</dt><dd className="text-slate-700">{bp.min_notice_minutes ?? 120} minutes</dd></div>
           <div><dt className="text-xs text-slate-400">Maximum advance</dt><dd className="text-slate-700">{bp.max_advance_days ?? 60} days</dd></div>
-          <div><dt className="text-xs text-slate-400">Max active appointments / patient</dt><dd className="text-slate-700">{bp.max_active_appointments_per_patient ?? 2}</dd></div>
-          <div><dt className="text-xs text-slate-400">Required patient fields</dt><dd className="text-slate-700">{(bp.required_patient_fields ?? []).join(', ') || '—'}</dd></div>
+          <div><dt className="text-xs text-slate-400">Max active {bookingsLc} / {contactLc}</dt><dd className="text-slate-700">{bp.max_active_appointments_per_patient ?? 2}</dd></div>
+          <div><dt className="text-xs text-slate-400">Required {contactLc} fields</dt><dd className="text-slate-700">{(bp.required_patient_fields ?? []).join(', ') || '—'}</dd></div>
         </dl>
       </div>
 

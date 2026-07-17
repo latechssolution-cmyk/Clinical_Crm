@@ -5,6 +5,8 @@ import { z } from 'zod';
 import {
   computeOpenSlots,
   zonedToUtc,
+  normalizePhone,
+  phoneTail,
   DEFAULT_BOOKING_POLICY,
   type AvailabilityRule,
   type AvailabilityException,
@@ -12,20 +14,11 @@ import {
 } from '@clinical-crm/core';
 import { createClient } from '@/lib/supabase/server';
 import { addDays, hhmm } from '@/lib/datetime';
-import type { AgentConfig, Clinic } from '@/lib/types';
+import type { AgentConfig } from '@/lib/types';
 
 // ---------------------------------------------------------------------------
 
-async function requireClinic(slug: string): Promise<{ clinic: Clinic; userId: string }> {
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error('Not authenticated');
-  const { data: clinic } = await supabase.from('clinics').select('*').eq('slug', slug).maybeSingle();
-  if (!clinic) throw new Error('Clinic not found');
-  return { clinic: clinic as Clinic, userId: user.id };
-}
+import { requireClinic } from '@/lib/require-clinic';
 
 const dateStr = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
@@ -141,11 +134,17 @@ export async function searchPatients(slug: string, query: string): Promise<{ pat
     const { clinic } = await requireClinic(slug);
     const supabase = createClient();
     const safe = q.replace(/[%_,()]/g, ' ').trim();
+    const filters = [`first_name.ilike.%${safe}%`, `last_name.ilike.%${safe}%`, `phone.ilike.%${safe}%`];
+    // Stored phones are E.164 — also match formatted input on the digit tail.
+    const digits = q.replace(/\D/g, '');
+    if (digits.length >= 4) {
+      filters.push(`phone.like.%${phoneTail(digits, 7)}`);
+    }
     const { data, error } = await supabase
       .from('patients')
       .select('id, first_name, last_name, phone')
       .eq('clinic_id', clinic.id)
-      .or(`first_name.ilike.%${safe}%,last_name.ilike.%${safe}%,phone.ilike.%${safe}%`)
+      .or(filters.join(','))
       .order('last_name')
       .limit(10);
     if (error) return { error: error.message };
@@ -159,7 +158,7 @@ const inlinePatientSchema = z.object({
   slug: z.string(),
   firstName: z.string().trim().min(1).max(80),
   lastName: z.string().trim().min(1).max(80),
-  phone: z.string().trim().regex(/^\+[1-9]\d{6,14}$/, 'Phone must be E.164, e.g. +15551234567'),
+  phone: z.string().trim().min(1, 'Phone is required').max(30),
 });
 
 export async function createPatientInline(
@@ -169,6 +168,10 @@ export async function createPatientInline(
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Invalid input' };
   try {
     const { clinic } = await requireClinic(parsed.data.slug);
+    const norm = normalizePhone(parsed.data.phone, clinic.default_country || 'US');
+    if (!norm.ok || !norm.e164) {
+      return { error: 'Enter a valid phone number, e.g. (555) 123-4567 or +15551234567.' };
+    }
     const supabase = createClient();
     const { data, error } = await supabase
       .from('patients')
@@ -176,7 +179,7 @@ export async function createPatientInline(
         clinic_id: clinic.id,
         first_name: parsed.data.firstName,
         last_name: parsed.data.lastName,
-        phone: parsed.data.phone,
+        phone: norm.e164,
       })
       .select('id, first_name, last_name, phone')
       .single();
@@ -210,15 +213,26 @@ export async function bookAppointment(input: z.infer<typeof bookSchema>): Promis
     const { clinic, userId } = await requireClinic(slug);
     const supabase = createClient();
 
-    const { data: type } = await supabase
-      .from('appointment_types')
-      .select('duration_minutes')
-      .eq('id', appointmentTypeId)
-      .eq('clinic_id', clinic.id)
-      .maybeSingle();
+    // Every caller-supplied id must belong to this clinic — RLS only checks the
+    // inserted row's clinic_id, not that referenced doctors/patients are ours.
+    const [{ data: type }, { data: doctor }, { data: patient }] = await Promise.all([
+      supabase
+        .from('appointment_types')
+        .select('duration_minutes')
+        .eq('id', appointmentTypeId)
+        .eq('clinic_id', clinic.id)
+        .maybeSingle(),
+      supabase.from('doctors').select('id').eq('id', doctorId).eq('clinic_id', clinic.id).maybeSingle(),
+      supabase.from('patients').select('id').eq('id', patientId).eq('clinic_id', clinic.id).maybeSingle(),
+    ]);
     if (!type) return { error: 'Appointment type not found' };
+    if (!doctor) return { error: 'Provider not found' };
+    if (!patient) return { error: 'Record not found' };
 
     const start = new Date(startsAt);
+    if (Number.isNaN(start.getTime()) || start.getTime() < Date.now()) {
+      return { error: 'Start time is in the past' };
+    }
     const end = new Date(start.getTime() + type.duration_minutes * 60_000);
 
     const { error } = await supabase.from('appointments').insert({
@@ -309,6 +323,9 @@ export async function rescheduleAppointment(
 
     const prevStatus = appt.status;
     const start = new Date(newStartsAt);
+    if (Number.isNaN(start.getTime()) || start.getTime() < Date.now()) {
+      return { error: 'New start time is in the past' };
+    }
     const end = new Date(start.getTime() + durationMs);
 
     // 1. cancel the original (frees the doctor's time range for the new insert)

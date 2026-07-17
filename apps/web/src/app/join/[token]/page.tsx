@@ -3,7 +3,7 @@ import { AcceptForm } from './accept-form';
 
 const REASONS: Record<string, string> = {
   invalid: 'This invitation link is not valid.',
-  expired: 'This invitation has expired. Ask the clinic owner to send a new one.',
+  expired: 'This invitation has expired. Ask the workspace owner to send a new one.',
   accepted: 'This invitation has already been used.',
 };
 
@@ -17,7 +17,7 @@ export default async function JoinPage({ params }: { params: { token: string } }
           <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-teal-600 text-lg font-bold text-white">
             +
           </div>
-          <h1 className="text-xl font-semibold text-slate-900">Clinic invitation</h1>
+          <h1 className="text-xl font-semibold text-slate-900">Workspace invitation</h1>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
           {preview.ok ? (

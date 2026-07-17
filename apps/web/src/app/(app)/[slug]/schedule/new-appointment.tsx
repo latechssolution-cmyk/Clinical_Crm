@@ -13,9 +13,11 @@ import {
   type PatientDto,
   type SlotDto,
 } from './actions';
+import type { ScheduleTerms } from './schedule-client';
 
 export function NewAppointmentModal({
   slug,
+  terms,
   timezone,
   today,
   doctors,
@@ -23,12 +25,16 @@ export function NewAppointmentModal({
   onClose,
 }: {
   slug: string;
+  terms: ScheduleTerms;
   timezone: string;
   today: string;
   doctors: Doctor[];
   appointmentTypes: AppointmentType[];
   onClose: () => void;
 }) {
+  const contactLc = terms.contact.toLowerCase();
+  const providerLc = terms.provider.toLowerCase();
+  const bookingLc = terms.booking.toLowerCase();
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -57,7 +63,7 @@ export function NewAppointmentModal({
 
   async function loadSlots() {
     if (!doctorId || !typeId || !date) {
-      setError('Pick a doctor, appointment type and date first.');
+      setError(`Pick a ${providerLc}, ${bookingLc} type and date first.`);
       return;
     }
     setError(null);
@@ -121,7 +127,7 @@ export function NewAppointmentModal({
       <div className="absolute inset-0 bg-slate-900/30" onClick={onClose} />
       <div className="relative z-10 max-h-[85vh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-6 shadow-xl sm:rounded-2xl">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-base font-semibold text-slate-900">New appointment</h2>
+          <h2 className="text-base font-semibold text-slate-900">New {bookingLc}</h2>
           <button onClick={onClose} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100">✕</button>
         </div>
 
@@ -129,12 +135,12 @@ export function NewAppointmentModal({
 
         {doctors.length === 0 || appointmentTypes.length === 0 ? (
           <p className="text-sm text-slate-500">
-            Add at least one active doctor and appointment type in Settings before booking.
+            Add at least one active {providerLc} and {bookingLc} type in Settings before booking.
           </p>
         ) : step === 1 || step === 2 ? (
           <div className="space-y-3">
             <div>
-              <label className={labelCls}>Doctor</label>
+              <label className={labelCls}>{terms.provider}</label>
               <select className={inputCls} value={doctorId} onChange={(e) => { setDoctorId(e.target.value); setSlots(null); }}>
                 {doctors.map((d) => (
                   <option key={d.id} value={d.id}>{d.name}</option>
@@ -142,7 +148,7 @@ export function NewAppointmentModal({
               </select>
             </div>
             <div>
-              <label className={labelCls}>Appointment type</label>
+              <label className={labelCls}>{terms.booking} type</label>
               <select className={inputCls} value={typeId} onChange={(e) => { setTypeId(e.target.value); setSlots(null); }}>
                 {appointmentTypes.map((t) => (
                   <option key={t.id} value={t.id}>
@@ -165,7 +171,7 @@ export function NewAppointmentModal({
                 <label className={labelCls}>Open slots — {fmtDayLabel(date)}</label>
                 {slots.length === 0 ? (
                   <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-500">
-                    No open slots. The doctor may have no availability rules for this weekday, or all slots are taken.
+                    No open slots. The {providerLc} may have no availability rules for this weekday, or all slots are taken.
                   </p>
                 ) : (
                   <div className="grid max-h-52 grid-cols-3 gap-2 overflow-y-auto">
@@ -208,20 +214,20 @@ export function NewAppointmentModal({
               </div>
             ) : creating ? (
               <div className="space-y-2">
-                <p className="text-sm font-medium text-slate-700">New patient</p>
+                <p className="text-sm font-medium text-slate-700">New {contactLc}</p>
                 <div className="grid grid-cols-2 gap-2">
                   <input className={inputCls} placeholder="First name" value={newFirst} onChange={(e) => setNewFirst(e.target.value)} />
                   <input className={inputCls} placeholder="Last name" value={newLast} onChange={(e) => setNewLast(e.target.value)} />
                 </div>
                 <input className={inputCls} placeholder="+15551234567" value={newPhone} onChange={(e) => setNewPhone(e.target.value)} />
                 <div className="flex gap-2">
-                  <button className={btnPrimary} onClick={createPatient}>Create patient</button>
+                  <button className={btnPrimary} onClick={createPatient}>Create {contactLc}</button>
                   <button className={btnSecondary} onClick={() => setCreating(false)}>Back to search</button>
                 </div>
               </div>
             ) : (
               <div>
-                <label className={labelCls}>Patient — search by name or phone</label>
+                <label className={labelCls}>{terms.contact} — search by name or phone</label>
                 <input
                   className={inputCls}
                   placeholder="Start typing…"
@@ -246,13 +252,13 @@ export function NewAppointmentModal({
                   )}
                 </div>
                 <button className="mt-2 text-sm font-medium text-teal-600 hover:underline" onClick={() => setCreating(true)}>
-                  + Create new patient
+                  + Create new {contactLc}
                 </button>
               </div>
             )}
 
             <button className={`${btnPrimary} w-full`} disabled={!patient || pending} onClick={book}>
-              {pending ? 'Booking…' : 'Book appointment'}
+              {pending ? 'Booking…' : `Book ${bookingLc}`}
             </button>
           </div>
         )}

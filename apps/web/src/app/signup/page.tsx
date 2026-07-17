@@ -40,7 +40,7 @@ export default function SignupPage() {
             +
           </div>
           <h1 className="text-xl font-semibold text-slate-900">Create your account</h1>
-          <p className="mt-1 text-sm text-slate-500">Set up your clinic in minutes</p>
+          <p className="mt-1 text-sm text-slate-500">Set up your workspace in minutes</p>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
           {sent ? (

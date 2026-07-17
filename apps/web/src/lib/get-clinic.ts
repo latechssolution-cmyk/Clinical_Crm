@@ -2,6 +2,7 @@ import { cache } from 'react';
 import { redirect } from 'next/navigation';
 import { getVertical } from '@clinical-crm/core';
 import { createClient } from '@/lib/supabase/server';
+import { getIsPlatformAdmin } from '@/lib/platform-admin';
 import type { Clinic, MemberRole } from '@/lib/types';
 
 /**
@@ -33,6 +34,12 @@ export const getClinic = cache(async (slug: string) => {
     .maybeSingle();
 
   if (!membership) redirect('/onboarding');
+
+  // Suspension applies to the dashboard too, not just the phone line —
+  // platform admins keep access so they can inspect/reactivate.
+  if ((clinic as Clinic).status === 'suspended' && !(await getIsPlatformAdmin())) {
+    redirect('/suspended');
+  }
 
   return {
     clinic: clinic as Clinic,

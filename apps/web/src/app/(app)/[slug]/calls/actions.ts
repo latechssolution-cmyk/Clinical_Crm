@@ -3,17 +3,12 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
+import { requireClinic as requireClinicShared } from '@/lib/require-clinic';
 import type { Clinic } from '@/lib/types';
 
 async function requireClinic(slug: string): Promise<Clinic> {
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error('Not authenticated');
-  const { data: clinic } = await supabase.from('clinics').select('*').eq('slug', slug).maybeSingle();
-  if (!clinic) throw new Error('Clinic not found');
-  return clinic as Clinic;
+  const { clinic } = await requireClinicShared(slug);
+  return clinic;
 }
 
 const spamSchema = z.object({

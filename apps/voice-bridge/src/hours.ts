@@ -28,6 +28,9 @@ function toWindows(raw: unknown): OpenWindow[] {
   for (const item of items) {
     if (item && typeof item === 'object') {
       const o = item as Record<string, unknown>;
+      // The dashboard stores closed days as { closed: true, open, close } —
+      // the retained open/close must not count as an open window.
+      if (o.closed === true) continue;
       const open = typeof o.open === 'string' ? o.open : typeof o.start === 'string' ? o.start : null;
       const close = typeof o.close === 'string' ? o.close : typeof o.end === 'string' ? o.end : null;
       if (open && close) out.push({ open, close });

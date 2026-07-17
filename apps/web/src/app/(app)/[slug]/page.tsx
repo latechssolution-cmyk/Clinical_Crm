@@ -9,6 +9,10 @@ import { RealtimeRefresher } from './realtime-refresher';
 
 export const dynamic = 'force-dynamic';
 
+// Canonical "active or kept" booking statuses — excludes cancelled AND no_show.
+// Used for both the "today" and "this week" stats so the two numbers agree.
+const KEPT_STATUSES: Appointment['status'][] = ['booked', 'confirmed', 'completed'];
+
 function Stat({ label, value }: { label: string; value: number }) {
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -45,7 +49,7 @@ export default async function TodayPage({ params }: { params: { slug: string } }
       .eq('clinic_id', clinic.id)
       .gte('starts_at', weekStart)
       .lt('starts_at', weekEnd)
-      .in('status', ['booked', 'confirmed', 'completed']),
+      .in('status', KEPT_STATUSES),
     supabase
       .from('calls')
       .select('id', { count: 'exact', head: true })
@@ -99,7 +103,7 @@ export default async function TodayPage({ params }: { params: { slug: string } }
 
       {/* Quick stats */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Stat label={`${t.bookings} today`} value={appointments.filter((a) => a.status !== 'cancelled').length} />
+        <Stat label={`${t.bookings} today`} value={appointments.filter((a) => KEPT_STATUSES.includes(a.status)).length} />
         <Stat label={`${t.bookings} this week`} value={weekCountRes.count ?? 0} />
         <Stat label="Calls today" value={callsTodayRes.count ?? 0} />
         <Stat label={`New ${t.contacts.toLowerCase()} this week`} value={newPatientsRes.count ?? 0} />

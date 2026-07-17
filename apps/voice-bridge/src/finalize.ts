@@ -77,6 +77,7 @@ export async function finalizeCall(session: CallSession): Promise<void> {
 }
 
 async function summarizeCall(session: CallSession): Promise<z.infer<typeof summarySchema> | null> {
+  const { clinic, vertical } = session.tenant;
   const conversation = session.transcript
     .map((t) => `${t.role === 'user' ? 'Caller' : 'Receptionist'}: ${t.text}`)
     .join('\n');
@@ -94,7 +95,7 @@ async function summarizeCall(session: CallSession): Promise<z.infer<typeof summa
         messages: [
           {
             role: 'system',
-            content: `You classify finished clinic reception phone calls. Reply with JSON: {"summary": string (2-3 sentences for clinic staff), "outcome": one of ${JSON.stringify(CALL_OUTCOMES)}, "extracted_data": object (any names, phone numbers, dates, requests mentioned)}.`,
+            content: `You classify finished reception phone calls for ${clinic.name}, a ${vertical.label.toLowerCase()}. A "${vertical.terminology.booking.toLowerCase()}" is this business's bookable visit type. Reply with JSON: {"summary": string (2-3 sentences for staff), "outcome": one of ${JSON.stringify(CALL_OUTCOMES)}, "extracted_data": object (any names, phone numbers, dates, requests mentioned)}.`,
           },
           { role: 'user', content: `Transcript:\n${conversation}` },
         ],
