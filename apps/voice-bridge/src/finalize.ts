@@ -55,6 +55,11 @@ export async function finalizeCall(session: CallSession): Promise<void> {
     call_id: session.callId,
     turns: session.transcript,
   };
+  // Qualification captured during the call also belongs on the transcript —
+  // the call-detail page renders transcript.qualification, not the patient's.
+  if (Object.keys(session.qualification).length > 0) {
+    transcriptRow.qualification = session.qualification;
+  }
 
   // 4. Summary + outcome classification (best-effort, non-realtime model).
   if (config.openaiApiKey && session.transcript.length > 0) {

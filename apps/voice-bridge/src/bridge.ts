@@ -36,6 +36,8 @@ interface LiveCall {
   responseActive: boolean;
   /** pending debounced barge-in timer */
   bargeInTimer: NodeJS.Timeout | null;
+  /** stall watchdog: caller spoke but no response started */
+  stallTimer: NodeJS.Timeout | null;
 }
 
 /** Sustained speech required before we interrupt the assistant (noise guard). */
@@ -68,6 +70,7 @@ async function teardown(call: LiveCall, reason: string): Promise<void> {
   if (call.finalized) return;
   call.finalized = true;
   if (call.bargeInTimer) clearTimeout(call.bargeInTimer);
+  if (call.stallTimer) clearTimeout(call.stallTimer);
   liveCalls.delete(call);
   console.log(`[call ${call.session.callId}] teardown (${reason})`);
 
@@ -197,6 +200,10 @@ function connectOpenAI(call: LiveCall, mode: ServiceMode): void {
 
       case 'response.created': {
         c.responseActive = true;
+        if (c.stallTimer) {
+          clearTimeout(c.stallTimer);
+          c.stallTimer = null;
+        }
         break;
       }
 
@@ -228,6 +235,20 @@ function connectOpenAI(call: LiveCall, mode: ServiceMode): void {
       case 'conversation.item.input_audio_transcription.completed': {
         const text = typeof ev.transcript === 'string' ? ev.transcript.trim() : '';
         if (text) c.session.transcript.push({ role: 'user', text, at: new Date().toISOString() });
+        // Stall watchdog: after a barge-in cancel, the server sometimes never
+        // starts a response for the caller's next utterance — the line goes
+        // permanently silent. If nothing starts within 3s of committed caller
+        // speech, nudge a response explicitly.
+        if (text && !c.responseActive) {
+          if (c.stallTimer) clearTimeout(c.stallTimer);
+          c.stallTimer = setTimeout(() => {
+            c.stallTimer = null;
+            if (!c.responseActive && !c.finalized) {
+              console.log(`[call ${c.session.callId}] stall watchdog: nudging response`);
+              safeSend(ws, { type: 'response.create' });
+            }
+          }, 3000);
+        }
         break;
       }
 
@@ -265,8 +286,10 @@ function connectOpenAI(call: LiveCall, mode: ServiceMode): void {
       }
 
       case 'error': {
-        // Benign race: our cancel landed after the response already finished.
+        // Benign races: our cancel landed after the response already finished,
+        // or the stall-watchdog nudge raced a server-initiated response.
         if (ev.error?.code === 'response_cancel_not_active') break;
+        if (ev.error?.code === 'conversation_already_has_active_response') break;
         console.error(`[call ${c.session.callId}] openai error event:`, JSON.stringify(ev.error ?? ev));
         break;
       }
@@ -339,6 +362,7 @@ export function createMediaWss(): WebSocketServer {
               finalized: false,
               responseActive: false,
               bargeInTimer: null,
+              stallTimer: null,
             };
             liveCalls.add(call);
             console.log(

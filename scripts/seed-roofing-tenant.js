@@ -52,12 +52,15 @@ const SLUG = 'skyline-roofing';
     ({ data: est } = await admin.from('doctors').insert({
       clinic_id: clinic.id, name: 'Mike Rivera', specialty: 'Senior Estimator', active: true,
     }).select().single());
-    await admin.from('availability_rules').insert(
-      [1, 2, 3, 4, 5].map((weekday) => ({
+    await admin.from('availability_rules').insert([
+      ...[1, 2, 3, 4, 5].map((weekday) => ({
         clinic_id: clinic.id, doctor_id: est.id, weekday,
         start_time: '08:00', end_time: '18:00',
       })),
-    );
+      // Saturday must match business_hours (sat 09:00-14:00) or the agent
+      // announces Saturday hours it can never offer slots for.
+      { clinic_id: clinic.id, doctor_id: est.id, weekday: 6, start_time: '09:00', end_time: '14:00' },
+    ]);
     console.log('Created estimator:', est.name);
   }
 

@@ -16,6 +16,11 @@ const STATUS_STYLES: Record<string, string> = {
 const VERTICAL_STYLES: Record<string, string> = {
   clinic: 'bg-sky-100 text-sky-800',
   roofing: 'bg-orange-100 text-orange-800',
+  dental: 'bg-teal-100 text-teal-800',
+  'law-firm': 'bg-indigo-100 text-indigo-800',
+  'hvac-plumbing': 'bg-amber-100 text-amber-800',
+  salon: 'bg-pink-100 text-pink-800',
+  'real-estate': 'bg-emerald-100 text-emerald-800',
 };
 
 export default async function AdminHome() {
