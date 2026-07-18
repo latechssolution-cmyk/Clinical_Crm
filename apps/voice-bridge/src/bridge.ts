@@ -1,7 +1,7 @@
 import WebSocket, { WebSocketServer } from 'ws';
 import twilio from 'twilio';
 import { config } from './config.js';
-import { loadTenantByClinicId } from './tenant.js';
+import { loadTenantByClinicId, takeCachedTenant } from './tenant.js';
 import { buildInstructions, type ServiceMode } from './instructions.js';
 import { getToolDefinitions } from './tools/definitions.js';
 import { executeTool } from './tools/executor.js';
@@ -124,8 +124,6 @@ function connectOpenAI(call: LiveCall, mode: ServiceMode): void {
   });
   call.openaiWs = openaiWs;
 
-  let greeted = false;
-
   openaiWs.on('open', () => {
     console.log(`[call ${call.session.callId}] openai connected`);
     // GA Realtime API session shape (the beta shape was retired by OpenAI).
@@ -161,6 +159,10 @@ function connectOpenAI(call: LiveCall, mode: ServiceMode): void {
         tool_choice: 'auto',
       },
     });
+    // Client events are processed in order — the greeting request can ride
+    // immediately behind session.update instead of waiting a full round-trip
+    // for session.updated. Shaves ~200-500ms off the caller's first hello.
+    safeSend(openaiWs, { type: 'response.create' });
   });
 
   openaiWs.on('message', (data) => {
@@ -187,15 +189,6 @@ function connectOpenAI(call: LiveCall, mode: ServiceMode): void {
     }
 
     switch (ev.type) {
-      case 'session.updated': {
-        // Kick off the initial greeting exactly once.
-        if (!greeted) {
-          greeted = true;
-          safeSend(ws, { type: 'response.create' });
-        }
-        break;
-      }
-
       case 'response.output_audio.delta':
       case 'response.audio.delta': {
         // Base64 G.711 μ-law from OpenAI → Twilio media frame. Drop stragglers
@@ -353,7 +346,10 @@ export function createMediaWss(): WebSocketServer {
               twilioWs.close();
               return;
             }
-            const tenant = clinicId ? await loadTenantByClinicId(clinicId) : null;
+            // Prefer the context the webhook just loaded (saves ~0.5s of DB
+            // round-trips before the greeting); fall back to a fresh load.
+            const tenant =
+              takeCachedTenant(callId) ?? (clinicId ? await loadTenantByClinicId(clinicId) : null);
             if (!tenant || !callId) {
               console.error('[bridge] stream start with unknown tenant/call — closing');
               twilioWs.close();

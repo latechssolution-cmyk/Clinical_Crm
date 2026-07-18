@@ -3,7 +3,7 @@ import twilio from 'twilio';
 import { config } from './config.js';
 import { mintStreamToken } from './stream-auth.js';
 import { getSupabase } from './db.js';
-import { resolveTenantByNumber, isBlockedNumber, type TenantContext } from './tenant.js';
+import { resolveTenantByNumber, isBlockedNumber, cacheTenantForCall, type TenantContext } from './tenant.js';
 import { isWithinBusinessHours, describeBusinessHours } from './hours.js';
 import { activeCallCount } from './bridge.js';
 
@@ -159,6 +159,10 @@ async function handleIncomingCall(req: http.IncomingMessage, res: http.ServerRes
   console.log(
     `[call ${callId}] incoming ${from || 'unknown'} → ${to} (clinic ${tenant.clinic.slug}, mode ${mode})`,
   );
+
+  // Hand the already-loaded tenant context to the media-stream leg so it can
+  // skip its own DB round-trips and greet the caller faster.
+  cacheTenantForCall(callId, tenant);
 
   // 6. Bridge the audio: <Connect><Stream> to our /media WebSocket.
   const connect = twiml.connect();

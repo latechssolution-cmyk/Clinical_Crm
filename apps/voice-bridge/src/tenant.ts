@@ -172,6 +172,27 @@ export async function loadTenantByClinicId(clinicId: string): Promise<TenantCont
   return loadContext(clinicId);
 }
 
+// ---------------------------------------------------------------------------
+// Webhook → media-stream handoff cache. The webhook already loaded the full
+// TenantContext; reloading it on stream start added ~0.5s of DB round-trips
+// to the caller's wait before the greeting. Entries live for 60s (Twilio
+// connects the stream within a second or two).
+// ---------------------------------------------------------------------------
+
+const pendingCallTenants = new Map<string, TenantContext>();
+
+export function cacheTenantForCall(callId: string, tenant: TenantContext): void {
+  pendingCallTenants.set(callId, tenant);
+  setTimeout(() => pendingCallTenants.delete(callId), 60_000).unref?.();
+}
+
+/** One-shot: returns and removes the cached context for this call. */
+export function takeCachedTenant(callId: string): TenantContext | null {
+  const t = pendingCallTenants.get(callId) ?? null;
+  if (t) pendingCallTenants.delete(callId);
+  return t;
+}
+
 /** True if `fromNumber` is on the clinic's blocked list. */
 export async function isBlockedNumber(clinicId: string, fromNumber: string): Promise<boolean> {
   if (!fromNumber) return false;
