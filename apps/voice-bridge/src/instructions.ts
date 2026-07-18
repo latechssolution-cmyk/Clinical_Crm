@@ -31,6 +31,9 @@ function spokenContactFields(fields: string[]): string {
  * Build the system instructions for the realtime agent from tenant config and
  * the tenant's vertical pack. All vertical differences (terminology, brief,
  * qualification, spam posture, emergency guidance) are data-driven from the pack.
+ *
+ * The conversation rules below are platform law for every tenant — canonical
+ * rulebook + rationale: docs/VOICE_AGENT_RULES.md. Change them there first.
  */
 export function buildInstructions(tenant: TenantContext, opts: InstructionOptions): string {
   const { clinic, agentConfig, doctors, appointmentTypes, vertical } = tenant;
@@ -164,7 +167,9 @@ ${clinic.name} is currently CLOSED. Do NOT book, cancel, or reschedule ${booking
   sections.push(`## Hard rules (never break these)
 1. If the caller describes an emergency: ${vertical.emergencyGuidance}${agentConfig.escalation_number ? ` Also offer that the urgent line is ${agentConfig.escalation_number}.` : ''} Use save_call_note with important: true to record it.
 2. Before booking, cancelling, or rescheduling ANYTHING you must identify the caller: collect and verbally confirm their ${identityFields}. Use find_patient first (their caller ID is a good starting point); create_patient only if no match exists.
-3. Phone numbers: let the caller say their number naturally, at their own pace — NEVER ask them to dictate digit by digit up front. Then read it back clearly in small groups and get a yes: "Got it — just to confirm, that's nine two three, three two nine, three nine seven, three seven nine?" Only pass the number to a tool after the caller confirms. If a tool still returns invalid_phone, or the caller corrects you twice, THEN ask them to repeat it slowly digit by digit as a last resort. If create_patient returns possible_duplicate, ask the caller: "I found an existing record for NAME with a number ending in XXXX — is that you?" If yes, call confirm_existing_patient with that id; if no, call create_patient again with confirmed_not_duplicate set to true.
+3. Phone numbers and other details: just ask plainly ("What's the best number to reach you?") — NEVER explain HOW to say it (no "at your own pace", no "digit by digit", no "I'll repeat it back"). After they say it, read it back once in small digit groups and get a yes: "Got it — that's nine two three, three two nine, three nine seven, three seven nine, right?" Only pass it to a tool after the yes. If a tool returns invalid_phone or the caller corrects you twice, only THEN ask them to repeat it slowly digit by digit. If create_patient returns possible_duplicate, ask the caller: "I found an existing record for NAME with a number ending in XXXX — is that you?" If yes, call confirm_existing_patient with that id; if no, call create_patient again with confirmed_not_duplicate set to true.
+3b. Confirm each detail AT MOST ONCE. Once the caller says yes to a read-back (number, address, name, time), it is settled: do not repeat it or re-confirm it later in the call unless the caller asks to change it or a tool rejects it. When the caller corrects you, use the corrected value going forward and confirm only the corrected part — never restate the old wrong value.
+3c. When the caller interrupts you mid-sentence: STOP immediately and listen. Respond to what they just said — do not resume or repeat the sentence you were saying, and do not re-confirm anything already settled. Answer their new point, then continue from where the conversation actually is.
 4. After any booking, cancellation, or reschedule, read the result back to the caller (${provider}, date, time) and get a verbal confirmation.
 5. Only offer ${booking} times returned by get_available_slots. Never invent availability.
 6. Use the tool IDs (doctor_id, appointment_type_id, patient_id) exactly as given by tools or the lists above. Never fabricate IDs.

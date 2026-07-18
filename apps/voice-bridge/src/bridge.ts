@@ -40,8 +40,10 @@ interface LiveCall {
   stallTimer: NodeJS.Timeout | null;
 }
 
-/** Sustained speech required before we interrupt the assistant (noise guard). */
-const BARGE_IN_DEBOUNCE_MS = 300;
+/** Sustained speech required before we interrupt the assistant (noise guard).
+ * Tuned down from 300ms: callers reported the agent "keeps talking over me" —
+ * 180ms still filters horn blips but cuts playback fast enough to feel heard. */
+const BARGE_IN_DEBOUNCE_MS = 180;
 
 const liveCalls = new Set<LiveCall>();
 
@@ -187,7 +189,10 @@ function connectOpenAI(call: LiveCall, mode: ServiceMode): void {
 
       case 'response.output_audio.delta':
       case 'response.audio.delta': {
-        // Base64 G.711 μ-law from OpenAI → Twilio media frame.
+        // Base64 G.711 μ-law from OpenAI → Twilio media frame. Drop stragglers
+        // from a cancelled response — they'd refill the buffer we just cleared
+        // and the agent would keep talking over the caller.
+        if (!c.responseActive) break;
         if (typeof ev.delta === 'string' && c.streamSid) {
           safeSend(c.twilioWs, {
             event: 'media',
@@ -217,6 +222,9 @@ function connectOpenAI(call: LiveCall, mode: ServiceMode): void {
         c.bargeInTimer = setTimeout(() => {
           c.bargeInTimer = null;
           if (!c.responseActive) return;
+          // Mark inactive FIRST so in-flight audio deltas from the cancelled
+          // response are dropped instead of refilling the cleared buffer.
+          c.responseActive = false;
           if (c.streamSid) safeSend(c.twilioWs, { event: 'clear', streamSid: c.streamSid });
           safeSend(ws, { type: 'response.cancel' });
         }, BARGE_IN_DEBOUNCE_MS);
