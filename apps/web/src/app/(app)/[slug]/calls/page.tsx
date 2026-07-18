@@ -43,9 +43,27 @@ export default async function CallsPage({
   const { data } = await query;
   const calls = (data ?? []) as unknown as Call[];
 
+  // At-a-glance tallies for the current view.
+  const tally = { booked: 0, spam: 0, other: 0 };
+  for (const c of calls) {
+    const tr = (Array.isArray(c.call_transcripts) ? c.call_transcripts[0] : c.call_transcripts) as CallTranscript | null;
+    const isSpam = tr?.outcome === 'spam' || (c.spam_score != null && c.spam_score > 0.7);
+    if (isSpam) tally.spam += 1;
+    else if (tr?.outcome === 'booked' || tr?.outcome === 'rescheduled') tally.booked += 1;
+    else tally.other += 1;
+  }
+
   return (
     <div className="space-y-4">
-      <h1 className="text-lg font-semibold text-slate-900">Calls</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-lg font-semibold text-slate-900">Calls</h1>
+        <div className="flex gap-2 text-xs">
+          <span className="rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-600">{calls.length} calls</span>
+          <span className="rounded-full bg-teal-100 px-2.5 py-1 font-medium text-teal-800">{tally.booked} booked</span>
+          <span className="rounded-full bg-rose-100 px-2.5 py-1 font-medium text-rose-700">{tally.spam} spam</span>
+          <span className="rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-600">{tally.other} other</span>
+        </div>
+      </div>
 
       <form method="get" className="flex flex-wrap items-end gap-3">
         <div>
@@ -88,6 +106,7 @@ export default async function CallsPage({
                   <th className="pb-2 pr-4 font-medium">{t.contact}</th>
                   <th className="hidden pb-2 pr-4 font-medium sm:table-cell">Duration</th>
                   <th className="pb-2 pr-4 font-medium">Outcome</th>
+                  <th className="hidden pb-2 pr-4 font-medium lg:table-cell">What happened</th>
                   <th className="pb-2 font-medium"></th>
                 </tr>
               </thead>
@@ -119,6 +138,11 @@ export default async function CallsPage({
                           <OutcomeBadge outcome={t?.outcome} />
                           {c.spam_score != null && c.spam_score > 0.7 && <SpamBadge />}
                         </span>
+                      </td>
+                      <td className="hidden max-w-[26rem] py-2.5 pr-4 lg:table-cell">
+                        <p className="truncate text-xs text-slate-500" title={t?.summary ?? undefined}>
+                          {t?.summary ?? '—'}
+                        </p>
                       </td>
                       <td className="py-2.5 text-right">
                         <Link href={`/${clinic.slug}/calls/${c.id}`} className="text-xs font-medium text-teal-600 hover:underline">

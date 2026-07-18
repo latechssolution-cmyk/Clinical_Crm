@@ -7,6 +7,7 @@ import { getToolDefinitions } from './tools/definitions.js';
 import { executeTool } from './tools/executor.js';
 import { finalizeCall } from './finalize.js';
 import { verifyStreamToken } from './stream-auth.js';
+import { boostOutputAudio } from './audio.js';
 import type { CallSession } from './session.js';
 
 const END_MARK = 'end-of-call';
@@ -38,6 +39,10 @@ interface LiveCall {
   bargeInTimer: NodeJS.Timeout | null;
   /** stall watchdog: caller spoke but no response started */
   stallTimer: NodeJS.Timeout | null;
+  /** when the caller last finished speaking (input_audio_buffer.speech_stopped) */
+  lastSpeechStoppedAt: number;
+  /** when the model last started a response */
+  lastResponseCreatedAt: number;
 }
 
 /** Sustained speech required before we interrupt the assistant (noise guard).
@@ -134,7 +139,11 @@ function connectOpenAI(call: LiveCall, mode: ServiceMode): void {
             format: { type: 'audio/pcmu' },
             // semantic_vad: the model judges real speech/interruptions instead
             // of a raw volume threshold — far more robust in noisy settings.
-            turn_detection: { type: 'semantic_vad' },
+            // interrupt_response: the SERVER cancels + truncates its own
+            // context when the caller interrupts, so the model never believes
+            // it said words the caller didn't hear. We only clear Twilio's
+            // playback buffer; no client-side cancel logic.
+            turn_detection: { type: 'semantic_vad', create_response: true, interrupt_response: true },
             // far_field: tuned for speakerphones / background noise (traffic).
             noise_reduction: { type: 'far_field' },
             transcription: { model: 'whisper-1' },
@@ -197,7 +206,7 @@ function connectOpenAI(call: LiveCall, mode: ServiceMode): void {
           safeSend(c.twilioWs, {
             event: 'media',
             streamSid: c.streamSid,
-            media: { payload: ev.delta },
+            media: { payload: boostOutputAudio(ev.delta) },
           });
         }
         break;
@@ -205,6 +214,7 @@ function connectOpenAI(call: LiveCall, mode: ServiceMode): void {
 
       case 'response.created': {
         c.responseActive = true;
+        c.lastResponseCreatedAt = Date.now();
         if (c.stallTimer) {
           clearTimeout(c.stallTimer);
           c.stallTimer = null;
@@ -213,20 +223,17 @@ function connectOpenAI(call: LiveCall, mode: ServiceMode): void {
       }
 
       case 'input_audio_buffer.speech_started': {
-        // Debounced barge-in: only interrupt the assistant if the caller keeps
-        // speaking for a sustained window — a horn blip or door slam won't cut
-        // it off, a real "wait, actually—" still will. Only relevant while a
-        // response is actively playing.
+        // The server decides whether this is a real interruption (semantic_vad
+        // interrupt_response) and cancels itself. Our only job: stop the audio
+        // already buffered at Twilio, debounced so a horn blip doesn't cut
+        // playback. Mark inactive first so in-flight deltas are dropped.
         if (!c.responseActive) break;
         if (c.bargeInTimer) clearTimeout(c.bargeInTimer);
         c.bargeInTimer = setTimeout(() => {
           c.bargeInTimer = null;
           if (!c.responseActive) return;
-          // Mark inactive FIRST so in-flight audio deltas from the cancelled
-          // response are dropped instead of refilling the cleared buffer.
           c.responseActive = false;
           if (c.streamSid) safeSend(c.twilioWs, { event: 'clear', streamSid: c.streamSid });
-          safeSend(ws, { type: 'response.cancel' });
         }, BARGE_IN_DEBOUNCE_MS);
         break;
       }
@@ -237,26 +244,32 @@ function connectOpenAI(call: LiveCall, mode: ServiceMode): void {
           clearTimeout(c.bargeInTimer);
           c.bargeInTimer = null;
         }
+        // Stall watchdog, keyed on the PROMPT signal (speech_stopped), not the
+        // laggy whisper transcription: if the caller finished speaking and no
+        // response starts within 3s, nudge one. The lastResponseCreatedAt
+        // guard prevents double-answering a turn the model already handled —
+        // the previous transcription-based version re-answered settled turns
+        // and made the agent repeat itself.
+        c.lastSpeechStoppedAt = Date.now();
+        if (c.stallTimer) clearTimeout(c.stallTimer);
+        c.stallTimer = setTimeout(() => {
+          c.stallTimer = null;
+          if (c.finalized || c.responseActive) return;
+          if (c.lastResponseCreatedAt >= c.lastSpeechStoppedAt) return; // turn already answered
+          console.log(`[call ${c.session.callId}] stall watchdog: nudging response`);
+          safeSend(ws, { type: 'response.create' });
+        }, 3000);
         break;
       }
 
       case 'conversation.item.input_audio_transcription.completed': {
+        // NOTE: whisper transcriptions lag the model's own audio understanding
+        // by seconds — never use this event to decide conversation state.
+        // Stamp the turn at the time the caller STOPPED SPEAKING so the saved
+        // transcript reads in true conversational order (finalize sorts by at).
         const text = typeof ev.transcript === 'string' ? ev.transcript.trim() : '';
-        if (text) c.session.transcript.push({ role: 'user', text, at: new Date().toISOString() });
-        // Stall watchdog: after a barge-in cancel, the server sometimes never
-        // starts a response for the caller's next utterance — the line goes
-        // permanently silent. If nothing starts within 3s of committed caller
-        // speech, nudge a response explicitly.
-        if (text && !c.responseActive) {
-          if (c.stallTimer) clearTimeout(c.stallTimer);
-          c.stallTimer = setTimeout(() => {
-            c.stallTimer = null;
-            if (!c.responseActive && !c.finalized) {
-              console.log(`[call ${c.session.callId}] stall watchdog: nudging response`);
-              safeSend(ws, { type: 'response.create' });
-            }
-          }, 3000);
-        }
+        const at = new Date(c.lastSpeechStoppedAt || Date.now()).toISOString();
+        if (text) c.session.transcript.push({ role: 'user', text, at });
         break;
       }
 
@@ -294,9 +307,7 @@ function connectOpenAI(call: LiveCall, mode: ServiceMode): void {
       }
 
       case 'error': {
-        // Benign races: our cancel landed after the response already finished,
-        // or the stall-watchdog nudge raced a server-initiated response.
-        if (ev.error?.code === 'response_cancel_not_active') break;
+        // Benign race: the stall-watchdog nudge raced a server response.
         if (ev.error?.code === 'conversation_already_has_active_response') break;
         console.error(`[call ${c.session.callId}] openai error event:`, JSON.stringify(ev.error ?? ev));
         break;
@@ -371,6 +382,8 @@ export function createMediaWss(): WebSocketServer {
               responseActive: false,
               bargeInTimer: null,
               stallTimer: null,
+              lastSpeechStoppedAt: 0,
+              lastResponseCreatedAt: 0,
             };
             liveCalls.add(call);
             console.log(

@@ -8,6 +8,69 @@ import { QualificationList, hasQualification } from '@/components/qualification'
 import type { Appointment, Call, CallTranscript } from '@/lib/types';
 import { MarkSpamButton } from './mark-spam';
 
+interface ToolEvent {
+  created_at: string;
+  event_type: string;
+  payload: { name?: string; args?: Record<string, unknown>; result_summary?: string };
+}
+
+/** Human-readable line for a logged agent action, in the tenant's terminology. */
+function describeEvent(
+  ev: ToolEvent,
+  t: { contact: string; booking: string; bookings: string },
+  tz: string,
+): { label: string; detail?: string; failed: boolean } {
+  const name = ev.payload?.name ?? 'action';
+  const args = ev.payload?.args ?? {};
+  const result = ev.payload?.result_summary ?? '';
+  const failed = result !== 'ok';
+  const contact = t.contact.toLowerCase();
+  const booking = t.booking.toLowerCase();
+
+  const argStr = (k: string) => (typeof args[k] === 'string' ? (args[k] as string) : undefined);
+  const when = (k: string) => {
+    const v = argStr(k);
+    try { return v ? fmtDateTime(v, tz) : undefined; } catch { return undefined; }
+  };
+
+  switch (name) {
+    case 'find_patient':
+      return { label: `Looked up ${contact}`, detail: argStr('phone') ?? argStr('name'), failed };
+    case 'create_patient':
+      return {
+        label: `Created new ${contact} record`,
+        detail: [argStr('first_name'), argStr('last_name')].filter(Boolean).join(' ') || undefined,
+        failed,
+      };
+    case 'confirm_existing_patient':
+      return { label: `Matched existing ${contact} record`, failed };
+    case 'save_qualification': {
+      const fields = args.fields && typeof args.fields === 'object' ? Object.keys(args.fields as object) : [];
+      return { label: 'Recorded qualification details', detail: fields.join(', ') || undefined, failed };
+    }
+    case 'get_available_slots':
+      return { label: 'Checked availability', detail: argStr('from_date'), failed };
+    case 'book_appointment':
+      return { label: `Booked ${booking}`, detail: when('starts_at'), failed };
+    case 'cancel_appointment':
+      return { label: `Cancelled ${booking}`, detail: argStr('reason'), failed };
+    case 'reschedule_appointment':
+      return { label: `Rescheduled ${booking}`, detail: when('new_starts_at'), failed };
+    case 'find_patient_appointments':
+      return { label: `Listed ${contact}'s ${t.bookings.toLowerCase()}`, failed };
+    case 'get_clinic_info':
+      return { label: 'Shared business info', failed };
+    case 'save_call_note':
+      return { label: args.important ? 'Saved an important note' : 'Saved a note', failed };
+    case 'flag_spam':
+      return { label: 'Flagged call as spam', detail: argStr('reason'), failed: false };
+    case 'end_call':
+      return { label: 'Agent ended the call', failed: false };
+    default:
+      return { label: name.replace(/_/g, ' '), failed };
+  }
+}
+
 export const dynamic = 'force-dynamic';
 
 export default async function CallDetailPage({
@@ -30,7 +93,7 @@ export default async function CallDetailPage({
   if (!callRow) notFound();
   const call = callRow as Call;
 
-  const [transcriptRes, apptRes] = await Promise.all([
+  const [transcriptRes, apptRes, eventsRes] = await Promise.all([
     supabase.from('call_transcripts').select('*').eq('call_id', call.id).maybeSingle(),
     supabase
       .from('appointments')
@@ -38,10 +101,18 @@ export default async function CallDetailPage({
       .eq('clinic_id', clinic.id)
       .eq('created_by_call', call.id)
       .order('starts_at'),
+    supabase
+      .from('call_events')
+      .select('created_at, event_type, payload')
+      .eq('clinic_id', clinic.id)
+      .eq('call_id', call.id)
+      .eq('event_type', 'tool_call')
+      .order('created_at'),
   ]);
 
   const transcript = transcriptRes.data as CallTranscript | null;
   const linkedAppointments = (apptRes.data ?? []) as Appointment[];
+  const events = (eventsRes.data ?? []) as ToolEvent[];
   const isSpam = call.spam_score != null && call.spam_score > 0.7;
 
   return (
@@ -101,6 +172,37 @@ export default async function CallDetailPage({
         </div>
 
         <div className="space-y-6">
+          <Card title="Activity">
+            {events.length === 0 ? (
+              <p className="text-sm text-slate-400">The AI took no actions on this call.</p>
+            ) : (
+              <ol className="space-y-2.5">
+                {events.map((ev, i) => {
+                  const d = describeEvent(ev, t, tz);
+                  return (
+                    <li key={i} className="flex gap-2.5 text-sm">
+                      <span
+                        className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${
+                          d.failed ? 'bg-amber-400' : 'bg-teal-500'
+                        }`}
+                      />
+                      <div className="min-w-0">
+                        <p className="text-slate-800">
+                          {d.label}
+                          {d.detail && <span className="text-slate-500"> — {d.detail}</span>}
+                        </p>
+                        <p className="text-[11px] text-slate-400">
+                          {fmtTime(ev.created_at, tz)}
+                          {d.failed && ev.payload?.result_summary && ` · ${ev.payload.result_summary}`}
+                        </p>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
+          </Card>
+
           {transcript && hasQualification(transcript.qualification) && (
             <Card title="Qualification">
               <QualificationList

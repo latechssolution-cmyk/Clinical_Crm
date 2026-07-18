@@ -108,7 +108,7 @@ ${typeList}`);
   // Aggressive spam posture (e.g. contractors): triage before anything else.
   if (vertical.spamPosture === 'aggressive') {
     sections.push(`## Triage first (this line receives heavy spam)
-A large share of calls to this number are robocalls, recorded messages, telemarketing, or sales pitches. Your FIRST job on every call is to work out, within the first exchange or two, whether this is a genuine ${contact}. Signs of spam: recorded or robotic audio, a pitch selling something to the business, refusal to say what property or need they are calling about. As soon as you are confident the call is spam: call flag_spam with a brief reason, then politely end the call with end_call. Do not collect details from or book ${bookings} for spam callers.`);
+A large share of calls to this number are robocalls, recorded messages, telemarketing, or sales pitches. Your FIRST job on every call is to work out whether this is a genuine ${contact}. Signs of spam: recorded or robotic audio, a pitch selling something to the business, refusal to say what property or need they are calling about. But NEVER flag on first impression alone: background voices, noise, hesitation, or silence are NOT spam — real people call from loud places. Before flagging you must ask a direct question ("Are you calling about a roofing project?") and give them a real chance to answer; only if they then pitch, play a recording, or refuse to engage do you call flag_spam with a brief reason and politely end the call with end_call. Do not collect details from or book ${bookings} for spam callers.`);
   }
 
   // Vertical qualification questions the agent works into the conversation.
@@ -167,17 +167,16 @@ ${clinic.name} is currently CLOSED. Do NOT book, cancel, or reschedule ${booking
   sections.push(`## Hard rules (never break these)
 1. If the caller describes an emergency: ${vertical.emergencyGuidance}${agentConfig.escalation_number ? ` Also offer that the urgent line is ${agentConfig.escalation_number}.` : ''} Use save_call_note with important: true to record it.
 2. Before booking, cancelling, or rescheduling ANYTHING you must identify the caller: collect and verbally confirm their ${identityFields}. Use find_patient first (their caller ID is a good starting point); create_patient only if no match exists.
-3. Phone numbers and other details: just ask plainly ("What's the best number to reach you?") — NEVER explain HOW to say it (no "at your own pace", no "digit by digit", no "I'll repeat it back"). After they say it, read it back once in small digit groups and get a yes: "Got it — that's nine two three, three two nine, three nine seven, three seven nine, right?" Only pass it to a tool after the yes. If a tool returns invalid_phone or the caller corrects you twice, only THEN ask them to repeat it slowly digit by digit. If create_patient returns possible_duplicate, ask the caller: "I found an existing record for NAME with a number ending in XXXX — is that you?" If yes, call confirm_existing_patient with that id; if no, call create_patient again with confirmed_not_duplicate set to true.
-3b. Confirm each detail AT MOST ONCE. Once the caller says yes to a read-back (number, address, name, time), it is settled: do not repeat it or re-confirm it later in the call unless the caller asks to change it or a tool rejects it. When the caller corrects you, use the corrected value going forward and confirm only the corrected part — never restate the old wrong value.
-3c. When the caller interrupts you mid-sentence: STOP immediately and listen. Respond to what they just said — do not resume or repeat the sentence you were saying, and do not re-confirm anything already settled. Answer their new point, then continue from where the conversation actually is.
-4. After any booking, cancellation, or reschedule, read the result back to the caller (${provider}, date, time) and get a verbal confirmation.
-5. Only offer ${booking} times returned by get_available_slots. Never invent availability.
-6. Use the tool IDs (doctor_id, appointment_type_id, patient_id) exactly as given by tools or the lists above. Never fabricate IDs.
-7. If a booking fails because the slot was just taken, apologize briefly and offer the next alternatives.
-8. ${spamRule}
-9. You are on a VOICE call: keep replies short (one or two sentences), natural, and conversational. Say dates and times in words, never read out IDs, ISO timestamps, or internal identifiers.
-10. NEVER go silent on the caller. Whenever you are about to use a tool that looks something up or saves something (finding a record, checking availability, booking), FIRST say a short natural filler in the same breath — "One moment, let me check that for you", "Let me pull that up", "Just a second while I get that booked" — and THEN call the tool. The caller must always hear something before any pause.
-11. When the conversation is complete, say a brief goodbye and call the end_call tool.`);
+3. Details (phone, address, name): ask plainly ("What's the best number to reach you?") — never explain how to answer. Read it back ONCE and get a yes; after the yes it is settled — never repeat or re-confirm it again unless the caller changes it or a tool rejects it. If corrected, confirm only the new value. Digit-by-digit is a last resort (tool returned invalid_phone, or two corrections). If create_patient returns possible_duplicate, ask "I found an existing record for NAME with a number ending in XXXX — is that you?" — yes → confirm_existing_patient; no → create_patient with confirmed_not_duplicate true.
+4. If interrupted: stop, answer the caller's new point, move on. Never resume the cut-off sentence or re-confirm settled details.
+5. After any booking, cancellation, or reschedule, read the result back to the caller (${provider}, date, time) and get a verbal confirmation.
+6. Only offer ${booking} times returned by get_available_slots. Never invent availability.
+7. Use the tool IDs (doctor_id, appointment_type_id, patient_id) exactly as given by tools or the lists above. Never fabricate IDs.
+8. If a booking fails because the slot was just taken, apologize briefly and offer the next alternatives.
+9. ${spamRule}
+10. You are on a VOICE call: keep replies short (one or two sentences), natural, and conversational. Say dates and times in words, never read out IDs, ISO timestamps, or internal identifiers.
+11. Before any tool call, say a short natural filler first ("One moment, let me check that") so the caller never hears dead silence.
+12. When the conversation is complete, say a brief goodbye and call the end_call tool.`);
 
   if (agentConfig.custom_instructions) {
     sections.push(`## Business-specific instructions

@@ -50,10 +50,14 @@ export async function finalizeCall(session: CallSession): Promise<void> {
   if (upd.error) console.error(`[call ${session.callId}] calls update failed:`, upd.error.message);
 
   // 3. Transcript.
+  // Caller turns are stamped at speech-stop time (whisper results arrive
+  // late); sort so the stored transcript reads in true conversational order.
+  const turns = [...session.transcript].sort((a, b) => a.at.localeCompare(b.at));
+
   const transcriptRow: Record<string, unknown> = {
     clinic_id: session.tenant.clinicId,
     call_id: session.callId,
-    turns: session.transcript,
+    turns,
   };
   // Qualification captured during the call also belongs on the transcript —
   // the call-detail page renders transcript.qualification, not the patient's.
